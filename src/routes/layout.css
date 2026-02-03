@@ -1,1 +1,101 @@
 @import 'tailwindcss';
+
+/* Custom font */
+body {
+	font-family:
+		'Inter',
+		system-ui,
+		-apple-system,
+		sans-serif;
+	-webkit-font-smoothing: antialiased;
+	-moz-osx-font-smoothing: grayscale;
+}
+
+/* Custom scrollbar for dark theme */
+::-webkit-scrollbar {
+	width: 8px;
+	height: 8px;
+}
+
+::-webkit-scrollbar-track {
+	background: rgb(30 41 59); /* slate-800 */
+	border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb {
+	background: rgb(71 85 105); /* slate-600 */
+	border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+	background: rgb(100 116 139); /* slate-500 */
+}
+
+/* Smooth animations */
+@keyframes fade-in {
+	from {
+		opacity: 0;
+	}
+	to {
+		opacity: 1;
+	}
+}
+
+@keyframes slide-in-from-top-2 {
+	from {
+		transform: translateY(-0.5rem);
+	}
+	to {
+		transform: translateY(0);
+	}
+}
+
+@keyframes slide-in-from-top-4 {
+	from {
+		transform: translateY(-1rem);
+	}
+	to {
+		transform: translateY(0);
+	}
+}
+
+.animate-in {
+	animation-duration: 300ms;
+	animation-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+	animation-fill-mode: both;
+}
+
+.fade-in {
+	animation-name: fade-in;
+}
+
+.slide-in-from-top-2 {
+	animation-name: slide-in-from-top-2;
+}
+
+.slide-in-from-top-4 {
+	animation-name: slide-in-from-top-4;
+}
+
+/* Drag and drop visual feedback */
+[draggable='true'] {
+	touch-action: none;
+	user-select: none;
+}
+
+/* Prevent text selection during drag */
+.dragging * {
+	user-select: none;
+}
+
+/* Focus visible for accessibility */
+:focus-visible {
+	outline: 2px solid rgb(139 92 246); /* violet-500 */
+	outline-offset: 2px;
+}
+
+/* Selection color */
+::selection {
+	background: rgb(139 92 246 / 0.3);
+	color: white;
+}

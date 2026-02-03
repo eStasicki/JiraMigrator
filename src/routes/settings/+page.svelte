@@ -1,0 +1,475 @@
+<script lang="ts">
+	import { goto } from '$app/navigation';
+	import { settingsStore, type Project } from '$lib/stores/settings.svelte';
+	import Button from '$lib/components/Button.svelte';
+	import Input from '$lib/components/Input.svelte';
+	import Card from '$lib/components/Card.svelte';
+	import ConfirmModal from '$lib/components/ConfirmModal.svelte';
+	import {
+		Save,
+		RotateCcw,
+		CheckCircle,
+		AlertTriangle,
+		Server,
+		Plus,
+		Trash2,
+		FolderOpen,
+		ChevronRight,
+		Edit2,
+		X
+	} from 'lucide-svelte';
+
+	// State
+	let showSavedMessage = $state(false);
+	let showResetMessage = $state(false);
+	let editingProjectId = $state<string | null>(null);
+	let newProjectName = $state('');
+	let showNewProjectForm = $state(false);
+
+	// Confirm modal state
+	let showDeleteModal = $state(false);
+	let showResetModal = $state(false);
+	let projectToDelete = $state<string | null>(null);
+
+	// Current editing project
+	let editingProject = $state<Project | null>(null);
+
+	// Get projects from store
+	const projects = $derived(settingsStore.settings.projects);
+
+	function startEditingProject(project: Project) {
+		editingProjectId = project.id;
+		// Deep clone for editing
+		editingProject = JSON.parse(JSON.stringify(project));
+	}
+
+	function cancelEditing() {
+		editingProjectId = null;
+		editingProject = null;
+	}
+
+	function handleSaveProject() {
+		if (editingProject && editingProjectId) {
+			settingsStore.updateProject(editingProjectId, {
+				name: editingProject.name,
+				jiraX: { ...editingProject.jiraX },
+				jiraY: { ...editingProject.jiraY }
+			});
+			showSavedMessage = true;
+			setTimeout(() => {
+				showSavedMessage = false;
+			}, 3000);
+			cancelEditing();
+		}
+	}
+
+	function handleAddProject() {
+		if (newProjectName.trim()) {
+			const newProject = settingsStore.addProject(newProjectName.trim());
+			newProjectName = '';
+			showNewProjectForm = false;
+			// Start editing the new project
+			startEditingProject(newProject);
+		}
+	}
+
+	function openDeleteModal(e: MouseEvent, projectId: string) {
+		e.stopPropagation();
+		e.preventDefault();
+		projectToDelete = projectId;
+		showDeleteModal = true;
+	}
+
+	function confirmDeleteProject() {
+		if (projectToDelete) {
+			settingsStore.removeProject(projectToDelete);
+			if (editingProjectId === projectToDelete) {
+				cancelEditing();
+			}
+		}
+		showDeleteModal = false;
+		projectToDelete = null;
+	}
+
+	function cancelDeleteProject() {
+		showDeleteModal = false;
+		projectToDelete = null;
+	}
+
+	function openResetModal(e: MouseEvent) {
+		e.stopPropagation();
+		e.preventDefault();
+		showResetModal = true;
+	}
+
+	function confirmReset() {
+		settingsStore.reset();
+		cancelEditing();
+		showResetModal = false;
+		showResetMessage = true;
+		setTimeout(() => {
+			showResetMessage = false;
+		}, 3000);
+	}
+
+	function cancelReset() {
+		showResetModal = false;
+	}
+
+	function isProjectFormValid(): boolean {
+		if (!editingProject) return false;
+		return !!(
+			editingProject.name &&
+			editingProject.jiraX.baseUrl &&
+			editingProject.jiraX.email &&
+			editingProject.jiraX.apiToken &&
+			editingProject.jiraY.baseUrl &&
+			editingProject.jiraY.email &&
+			editingProject.jiraY.apiToken
+		);
+	}
+
+	function formatDate(isoDate: string): string {
+		return new Date(isoDate).toLocaleDateString('pl-PL', {
+			day: 'numeric',
+			month: 'short',
+			year: 'numeric'
+		});
+	}
+</script>
+
+<svelte:head>
+	<title>Ustawienia | Jira Migrator</title>
+	<meta name="description" content="Zarządzaj projektami i połączeniami z Jira" />
+</svelte:head>
+
+<div class="min-h-screen pt-16">
+	<div class="mx-auto max-w-6xl px-4 py-8">
+		<!-- Header -->
+		<div class="mb-8">
+			<h1 class="text-3xl font-bold text-white">Ustawienia</h1>
+			<p class="mt-2 text-slate-400">
+				Zarządzaj projektami i połączeniami między instancjami Jira.
+			</p>
+		</div>
+
+		<!-- Security Notice -->
+		<div
+			class="mb-8 flex items-start gap-3 rounded-xl border border-amber-500/30 bg-amber-500/10 p-4"
+		>
+			<AlertTriangle class="mt-0.5 size-5 shrink-0 text-amber-400" />
+			<div>
+				<h3 class="font-semibold text-amber-300">Bezpieczeństwo danych</h3>
+				<p class="mt-1 text-sm text-amber-200/80">
+					Wszystkie dane uwierzytelniające są przechowywane wyłącznie w localStorage Twojej
+					przeglądarki. Nigdy nie są wysyłane do żadnego serwera zewnętrznego.
+				</p>
+			</div>
+		</div>
+
+		<!-- Messages -->
+		{#if showSavedMessage}
+			<div
+				class="mb-6 flex items-center gap-2 rounded-lg bg-emerald-500/20 px-4 py-3 text-emerald-400"
+			>
+				<CheckCircle class="size-5" />
+				<span>Projekt został zapisany pomyślnie!</span>
+			</div>
+		{/if}
+		{#if showResetMessage}
+			<div class="mb-6 flex items-center gap-2 rounded-lg bg-amber-500/20 px-4 py-3 text-amber-400">
+				<RotateCcw class="size-5" />
+				<span>Wszystkie dane zostały usunięte.</span>
+			</div>
+		{/if}
+
+		<div class="grid gap-8 lg:grid-cols-[320px_1fr]">
+			<!-- Projects Sidebar -->
+			<div class="space-y-4">
+				<div class="flex items-center justify-between">
+					<h2 class="text-lg font-semibold text-white">Projekty</h2>
+					<Button variant="ghost" size="sm" onclick={() => (showNewProjectForm = true)}>
+						<Plus class="size-4" />
+					</Button>
+				</div>
+
+				<!-- New Project Form -->
+				{#if showNewProjectForm}
+					<div class="rounded-xl border border-violet-500/30 bg-violet-500/10 p-4">
+						<div class="flex items-center gap-2">
+							<input
+								type="text"
+								bind:value={newProjectName}
+								placeholder="Nazwa projektu..."
+								class="flex-1 rounded-lg border border-slate-600 bg-slate-800 px-3 py-2 text-sm text-white placeholder:text-slate-500 focus:border-violet-500 focus:ring-1 focus:ring-violet-500 focus:outline-none"
+								onkeydown={(e) => e.key === 'Enter' && handleAddProject()}
+							/>
+							<Button
+								variant="primary"
+								size="sm"
+								onclick={handleAddProject}
+								disabled={!newProjectName.trim()}
+							>
+								<Plus class="size-4" />
+							</Button>
+							<Button
+								variant="ghost"
+								size="sm"
+								onclick={() => {
+									showNewProjectForm = false;
+									newProjectName = '';
+								}}
+							>
+								<X class="size-4" />
+							</Button>
+						</div>
+					</div>
+				{/if}
+
+				<!-- Projects List -->
+				{#if projects.length === 0}
+					<div
+						class="rounded-xl border border-dashed border-slate-700 bg-slate-800/30 p-6 text-center"
+					>
+						<FolderOpen class="mx-auto mb-2 size-8 text-slate-600" />
+						<p class="text-sm text-slate-500">Brak projektów</p>
+						<p class="mt-1 text-xs text-slate-600">Dodaj pierwszy projekt, aby rozpocząć</p>
+					</div>
+				{:else}
+					<div class="space-y-2">
+						{#each projects as project (project.id)}
+							<button
+								type="button"
+								onclick={() => startEditingProject(project)}
+								class="group flex w-full items-center gap-3 rounded-xl border p-4 text-left transition-all
+									{editingProjectId === project.id
+									? 'border-violet-500 bg-violet-500/10'
+									: 'border-slate-700/50 bg-slate-800/40 hover:border-slate-600 hover:bg-slate-800'}"
+							>
+								<div
+									class="flex size-10 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-violet-500 to-fuchsia-600 font-bold text-white"
+								>
+									{project.name.charAt(0).toUpperCase()}
+								</div>
+								<div class="min-w-0 flex-1">
+									<h3 class="truncate font-medium text-white">{project.name}</h3>
+									<p class="truncate text-xs text-slate-500">
+										Utworzono: {formatDate(project.createdAt)}
+									</p>
+								</div>
+								<ChevronRight
+									class="size-4 text-slate-600 transition-colors group-hover:text-slate-400"
+								/>
+							</button>
+						{/each}
+					</div>
+				{/if}
+
+				<!-- Reset Button (at bottom) -->
+				{#if projects.length > 0}
+					<div class="border-t border-slate-700/50 pt-4">
+						<Button
+							variant="ghost"
+							size="sm"
+							onclick={(e) => openResetModal(e)}
+							class="w-full text-red-400 hover:bg-red-500/10"
+						>
+							<RotateCcw class="size-4" />
+							Usuń wszystkie projekty
+						</Button>
+					</div>
+				{/if}
+			</div>
+
+			<!-- Project Editor -->
+			<div>
+				{#if editingProject}
+					<div class="rounded-xl border border-slate-700/50 bg-slate-800/30 p-6">
+						<!-- Project Header -->
+						<div class="mb-6 flex items-center justify-between">
+							<div class="flex items-center gap-3">
+								<div
+									class="flex size-12 items-center justify-center rounded-xl bg-gradient-to-br from-violet-500 to-fuchsia-600 text-xl font-bold text-white"
+								>
+									{editingProject.name.charAt(0).toUpperCase()}
+								</div>
+								<div>
+									<input
+										type="text"
+										bind:value={editingProject.name}
+										class="border-none bg-transparent text-xl font-bold text-white focus:outline-none"
+										placeholder="Nazwa projektu"
+									/>
+									<p class="text-sm text-slate-500">Edycja ustawień projektu</p>
+								</div>
+							</div>
+							<Button
+								variant="ghost"
+								size="sm"
+								onclick={(e) => openDeleteModal(e, editingProject!.id)}
+								class="text-red-400 hover:bg-red-500/10"
+							>
+								<Trash2 class="size-4" />
+							</Button>
+						</div>
+
+						<!-- Jira Configs Grid -->
+						<div class="grid gap-6 lg:grid-cols-2">
+							<!-- Jira X Config -->
+							<Card title="🔵 Jira X (Źródłowa)">
+								<div class="space-y-4">
+									<Input
+										id="jiraX-name"
+										label="Nazwa wyświetlana"
+										bind:value={editingProject.jiraX.name}
+										placeholder="np. Jira Produkcyjna"
+										required
+									/>
+									<Input
+										id="jiraX-url"
+										label="URL Jira"
+										type="url"
+										bind:value={editingProject.jiraX.baseUrl}
+										placeholder="https://twoja-firma.atlassian.net"
+										required
+									/>
+									<Input
+										id="jiraX-email"
+										label="Email"
+										type="email"
+										bind:value={editingProject.jiraX.email}
+										placeholder="twoj.email@firma.com"
+										required
+									/>
+									<Input
+										id="jiraX-token"
+										label="API Token"
+										type="password"
+										bind:value={editingProject.jiraX.apiToken}
+										placeholder="Twój API token z Atlassian"
+										required
+									/>
+								</div>
+							</Card>
+
+							<!-- Jira Y Config -->
+							<Card title="🟢 Jira Y (Docelowa)">
+								<div class="space-y-4">
+									<Input
+										id="jiraY-name"
+										label="Nazwa wyświetlana"
+										bind:value={editingProject.jiraY.name}
+										placeholder="np. Jira Klienta"
+										required
+									/>
+									<Input
+										id="jiraY-url"
+										label="URL Jira"
+										type="url"
+										bind:value={editingProject.jiraY.baseUrl}
+										placeholder="https://klient.atlassian.net"
+										required
+									/>
+									<Input
+										id="jiraY-email"
+										label="Email"
+										type="email"
+										bind:value={editingProject.jiraY.email}
+										placeholder="twoj.email@klient.com"
+										required
+									/>
+									<Input
+										id="jiraY-token"
+										label="API Token"
+										type="password"
+										bind:value={editingProject.jiraY.apiToken}
+										placeholder="Twój API token z Atlassian"
+										required
+									/>
+								</div>
+							</Card>
+						</div>
+
+						<!-- API Token Help -->
+						<div class="mt-6 rounded-xl border border-slate-700/50 bg-slate-900/50 p-4">
+							<div class="flex items-start gap-3">
+								<Server class="mt-0.5 size-5 text-violet-400" />
+								<div>
+									<h3 class="font-semibold text-white">Jak uzyskać API Token?</h3>
+									<ol class="mt-2 list-inside list-decimal space-y-1 text-sm text-slate-400">
+										<li>
+											Przejdź do <a
+												href="https://id.atlassian.com/manage-profile/security/api-tokens"
+												target="_blank"
+												rel="noopener noreferrer"
+												class="text-violet-400 hover:underline">Atlassian API Tokens</a
+											>
+										</li>
+										<li>Kliknij "Create API token"</li>
+										<li>Nadaj tokenowi nazwę (np. "Jira Migrator")</li>
+										<li>Skopiuj wygenerowany token</li>
+									</ol>
+								</div>
+							</div>
+						</div>
+
+						<!-- Actions -->
+						<div class="mt-6 flex items-center justify-end gap-3 border-t border-slate-700/50 pt-6">
+							<Button variant="secondary" onclick={cancelEditing}>Anuluj</Button>
+							<Button
+								variant="primary"
+								onclick={handleSaveProject}
+								disabled={!isProjectFormValid()}
+							>
+								<Save class="size-4" />
+								Zapisz projekt
+							</Button>
+						</div>
+					</div>
+				{:else}
+					<!-- No project selected -->
+					<div
+						class="flex h-full items-center justify-center rounded-xl border border-dashed border-slate-700 bg-slate-800/20 p-12"
+					>
+						<div class="text-center">
+							<Edit2 class="mx-auto mb-4 size-12 text-slate-600" />
+							<h3 class="text-lg font-medium text-slate-400">Wybierz projekt do edycji</h3>
+							<p class="mt-2 text-sm text-slate-600">
+								Lub dodaj nowy projekt klikając przycisk + po lewej stronie
+							</p>
+						</div>
+					</div>
+				{/if}
+			</div>
+		</div>
+
+		<!-- Back to Migration Button -->
+		<div class="mt-8 text-center">
+			<Button variant="ghost" onclick={() => goto('/')}>← Wróć do migracji</Button>
+		</div>
+	</div>
+</div>
+
+<!-- Delete Project Modal -->
+<ConfirmModal
+	isOpen={showDeleteModal}
+	title="Usuń projekt"
+	message="Czy na pewno chcesz usunąć ten projekt? Ta akcja jest nieodwracalna."
+	confirmLabel="Usuń projekt"
+	cancelLabel="Anuluj"
+	variant="danger"
+	onConfirm={confirmDeleteProject}
+	onCancel={cancelDeleteProject}
+/>
+
+<!-- Reset All Modal -->
+<ConfirmModal
+	isOpen={showResetModal}
+	title="Usuń wszystkie projekty"
+	message="Czy na pewno chcesz usunąć wszystkie projekty i ustawienia? Ta akcja jest nieodwracalna."
+	confirmLabel="Usuń wszystko"
+	cancelLabel="Anuluj"
+	variant="danger"
+	onConfirm={confirmReset}
+	onCancel={cancelReset}
+/>

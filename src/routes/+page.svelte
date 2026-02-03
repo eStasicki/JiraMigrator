@@ -1,106 +1,399 @@
 <script lang="ts">
-	import { Rocket, Palette, Database, TestTube, Sparkles } from 'lucide-svelte';
-	import { cn } from '$lib/utils';
+	import { onMount } from 'svelte';
+	import { migrationStore, type WorklogEntry } from '$lib/stores/migration.svelte';
+	import { settingsStore } from '$lib/stores/settings.svelte';
+	import {
+		fetchWorklogsFromJiraX,
+		fetchParentsFromJiraY,
+		migrateWorklogs,
+		getTotalTime
+	} from '$lib/api/mockJiraApi';
+	import WorklogCard from '$lib/components/WorklogCard.svelte';
+	import ParentCard from '$lib/components/ParentCard.svelte';
+	import DatePicker from '$lib/components/DatePicker.svelte';
+	import Button from '$lib/components/Button.svelte';
+	import AddParentModal from '$lib/components/AddParentModal.svelte';
+	import MigrationConfirmModal from '$lib/components/MigrationConfirmModal.svelte';
+	import {
+		RefreshCw,
+		Send,
+		Inbox,
+		Plus,
+		Clock,
+		Loader2,
+		CheckCircle2,
+		AlertCircle,
+		CheckSquare,
+		Square
+	} from 'lucide-svelte';
 
-	const features = [
-		{
-			icon: Rocket,
-			title: 'SvelteKit 5',
-			description: 'Najnowsza wersja z Svelte 5 runes i ulepszoną wydajnością'
-		},
-		{
-			icon: Palette,
-			title: 'Tailwind CSS 4',
-			description: 'Nowoczesne stylowanie z pluginami: forms, typography, animate'
-		},
-		{
-			icon: Database,
-			title: 'Supabase',
-			description: 'Backend-as-a-Service z autentykacją i bazą danych'
-		},
-		{
-			icon: TestTube,
-			title: 'Vitest & Playwright',
-			description: 'Kompletne testowanie: unit, component i E2E'
-		},
-		{
-			icon: Sparkles,
-			title: 'TypeScript',
-			description: 'Pełne wsparcie TypeScript z ESLint i Prettier'
+	let migrationMessage = $state<{ type: 'success' | 'error'; text: string } | null>(null);
+	let showConfirmModal = $state(false);
+
+	// Load worklogs on mount and date change
+	async function loadJiraXWorklogs() {
+		migrationStore.setLoadingX(true);
+		try {
+			const worklogs = await fetchWorklogsFromJiraX(migrationStore.state.jiraXDate);
+			migrationStore.setJiraXWorklogs(worklogs);
+		} finally {
+			migrationStore.setLoadingX(false);
 		}
-	];
+	}
+
+	async function loadJiraYParents() {
+		migrationStore.setLoadingY(true);
+		try {
+			const parents = await fetchParentsFromJiraY(migrationStore.state.jiraYMonth);
+			migrationStore.setJiraYParents(parents);
+		} finally {
+			migrationStore.setLoadingY(false);
+		}
+	}
+
+	function handleJiraXDateChange(date: Date) {
+		migrationStore.setJiraXDate(date);
+		loadJiraXWorklogs();
+	}
+
+	function openConfirmModal() {
+		const pending = migrationStore.getTotalPendingMigration();
+		if (pending.count > 0) {
+			showConfirmModal = true;
+		}
+	}
+
+	async function handleMigrate() {
+		migrationStore.setMigrating(true);
+		migrationMessage = null;
+
+		try {
+			const summary = migrationStore.getMigrationSummary();
+			const migrations = summary.map((s) => ({
+				parentKey: s.parentKey,
+				children: s.children
+			}));
+
+			const result = await migrateWorklogs(migrations);
+
+			if (result.success) {
+				migrationStore.clearAllChildren();
+				showConfirmModal = false;
+				migrationMessage = {
+					type: 'success',
+					text: `Pomyślnie zmigrowano ${result.migratedCount} worklogów do Jira Y!`
+				};
+			} else {
+				migrationMessage = {
+					type: 'error',
+					text: 'Wystąpił błąd podczas migracji. Spróbuj ponownie.'
+				};
+			}
+		} finally {
+			migrationStore.setMigrating(false);
+			setTimeout(() => {
+				migrationMessage = null;
+			}, 5000);
+		}
+	}
+
+	function handleDragStart(e: DragEvent, worklog: WorklogEntry) {
+		if (e.dataTransfer) {
+			e.dataTransfer.effectAllowed = 'move';
+			e.dataTransfer.setData('application/json', JSON.stringify(worklog));
+		}
+	}
+
+	function getMonthName(date: Date): string {
+		return date.toLocaleDateString('pl-PL', { month: 'long', year: 'numeric' });
+	}
+
+	const pendingMigration = $derived(migrationStore.getTotalPendingMigration());
+	const selectedCount = $derived(migrationStore.getSelectedCount());
+	const selectedTime = $derived(migrationStore.getSelectedTotalTime());
+	const allSelected = $derived(
+		migrationStore.state.jiraXWorklogs.length > 0 &&
+			selectedCount === migrationStore.state.jiraXWorklogs.length
+	);
+
+	// Active project
+	const activeProject = $derived(settingsStore.getActiveProject());
+	const jiraXName = $derived(activeProject?.jiraX.name || 'Jira X');
+	const jiraYName = $derived(activeProject?.jiraY.name || 'Jira Y');
+
+	// Track active project ID to reload data when it changes
+	let lastActiveProjectId = $state<string | null>(null);
+
+	$effect(() => {
+		const currentProjectId = activeProject?.id ?? null;
+
+		// If project changed (not just on initial mount)
+		if (lastActiveProjectId !== null && lastActiveProjectId !== currentProjectId) {
+			// Clear current data and reload
+			migrationStore.clearAllChildren();
+			loadJiraXWorklogs();
+			loadJiraYParents();
+		}
+
+		lastActiveProjectId = currentProjectId;
+	});
+
+	onMount(() => {
+		loadJiraXWorklogs();
+		loadJiraYParents();
+	});
 </script>
 
-<div class="container mx-auto px-4 py-16">
-	<div class="mx-auto max-w-4xl text-center">
-		<h1 class="mb-4 text-5xl font-bold tracking-tight">
-			Witaj w <span
-				class="bg-gradient-to-r from-orange-500 to-pink-500 bg-clip-text text-transparent"
-				>JiraMigrator</span
-			>
-		</h1>
-		<p class="mb-12 text-xl text-gray-600 dark:text-gray-400">
-			Nowoczesna aplikacja SvelteKit z TypeScript, Tailwind CSS i Supabase
-		</p>
+<svelte:head>
+	<title>Jira Migrator - Przenoś worklogi między Jirami</title>
+	<meta
+		name="description"
+		content="Aplikacja do migracji zalogowanego czasu między dwoma instancjami Jira"
+	/>
+</svelte:head>
 
-		<!-- Features Grid -->
-		<div class="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-			{#each features as feature}
-				<div
-					class={cn(
-						'group rounded-lg border border-gray-200 bg-white p-6 shadow-sm transition-all hover:shadow-md dark:border-gray-800 dark:bg-gray-900'
-					)}
-				>
-					<div
-						class="mb-4 inline-flex rounded-lg bg-gradient-to-br from-orange-500 to-pink-500 p-3 text-white"
-					>
-						<svelte:component this={feature.icon} class="size-6" />
-					</div>
-					<h3 class="mb-2 text-lg font-semibold">{feature.title}</h3>
-					<p class="text-sm text-gray-600 dark:text-gray-400">{feature.description}</p>
-				</div>
-			{/each}
-		</div>
+<!-- Modals -->
+<AddParentModal />
+<MigrationConfirmModal
+	isOpen={showConfirmModal}
+	onClose={() => (showConfirmModal = false)}
+	onConfirm={handleMigrate}
+	isMigrating={migrationStore.state.isMigrating}
+/>
 
-		<!-- CTA Section -->
-		<div class="mt-12">
+<div class="flex min-h-screen flex-col pt-16">
+	<!-- Migration Message -->
+	{#if migrationMessage}
+		<div
+			class="animate-in fade-in slide-in-from-top-4 fixed top-20 right-4 left-4 z-50 mx-auto max-w-md"
+		>
 			<div
-				class="rounded-lg border border-gray-200 bg-gradient-to-br from-orange-50 to-pink-50 p-8 dark:border-gray-800 dark:from-gray-900 dark:to-gray-800"
+				class="flex items-center gap-3 rounded-xl border px-4 py-3 shadow-lg backdrop-blur-sm
+					{migrationMessage.type === 'success'
+					? 'border-emerald-500/30 bg-emerald-500/20 text-emerald-400'
+					: 'border-red-500/30 bg-red-500/20 text-red-400'}"
 			>
-				<h2 class="mb-4 text-2xl font-bold">Zacznij Budować</h2>
-				<p class="mb-6 text-gray-600 dark:text-gray-400">
-					Wszystkie narzędzia są już skonfigurowane. Możesz od razu zacząć tworzyć swoją aplikację!
-				</p>
-				<div class="flex flex-wrap justify-center gap-4">
-					<a
-						href="https://svelte.dev/docs/kit"
-						target="_blank"
-						rel="noopener noreferrer"
-						class="rounded-lg bg-gradient-to-r from-orange-500 to-pink-500 px-6 py-3 font-semibold text-white transition-transform hover:scale-105"
-					>
-						Dokumentacja SvelteKit
-					</a>
-					<a
-						href="https://tailwindcss.com/docs"
-						target="_blank"
-						rel="noopener noreferrer"
-						class="rounded-lg border border-gray-300 bg-white px-6 py-3 font-semibold transition-colors hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-800 dark:hover:bg-gray-700"
-					>
-						Dokumentacja Tailwind
-					</a>
-				</div>
+				{#if migrationMessage.type === 'success'}
+					<CheckCircle2 class="size-5 flex-shrink-0" />
+				{:else}
+					<AlertCircle class="size-5 flex-shrink-0" />
+				{/if}
+				<span class="font-medium">{migrationMessage.text}</span>
 			</div>
 		</div>
+	{/if}
 
-		<!-- Quick Start Commands -->
-		<div class="prose prose-gray dark:prose-invert mx-auto mt-12 text-left">
-			<h2>Szybki Start</h2>
-			<pre><code
-					>npm run dev          # Uruchom serwer deweloperski
-npm run build        # Zbuduj wersję produkcyjną
-npm run test         # Uruchom testy
-npm run validate     # Sprawdź kod (format, lint, typecheck)</code
-				></pre>
+	<!-- Main Content -->
+	<main class="flex flex-1 flex-col gap-4 p-4 lg:p-6">
+		<!-- Two Column Layout -->
+		<div
+			class="grid flex-1 grid-cols-1 gap-4 lg:grid-cols-2 lg:gap-6"
+			style="min-height: calc(100vh - 8rem);"
+		>
+			<!-- Column 1: Jira X (Source) -->
+			<div
+				class="flex h-full flex-col overflow-visible rounded-xl border border-violet-500/30 bg-gradient-to-b from-violet-500/10 to-slate-900/80 backdrop-blur-sm"
+			>
+				<!-- Header -->
+				<div class="relative z-20 overflow-visible border-b border-slate-700/50 p-4">
+					<div class="flex items-center justify-between">
+						<div>
+							<h3 class="flex items-center gap-2 text-lg font-semibold text-white">
+								{jiraXName}
+								<span
+									class="rounded-full bg-violet-500/20 px-2 py-0.5 text-xs font-medium text-violet-400"
+								>
+									{migrationStore.state.jiraXWorklogs.length}
+								</span>
+							</h3>
+							<p class="mt-0.5 text-sm text-slate-400">Źródło worklogów</p>
+						</div>
+
+						<div class="flex items-center gap-2">
+							{#if migrationStore.state.jiraXWorklogs.length > 0}
+								<div class="flex items-center gap-1.5 rounded-lg bg-slate-800 px-3 py-1.5">
+									<Clock class="size-4 text-violet-400" />
+									<span class="text-sm font-semibold text-white">
+										{getTotalTime(migrationStore.state.jiraXWorklogs)}
+									</span>
+								</div>
+							{/if}
+							<DatePicker
+								bind:selectedDate={migrationStore.state.jiraXDate}
+								onDateChange={handleJiraXDateChange}
+								label=""
+							/>
+							<Button variant="ghost" size="sm" onclick={loadJiraXWorklogs}>
+								<RefreshCw class="size-4" />
+							</Button>
+						</div>
+					</div>
+				</div>
+
+				<!-- Content -->
+				<div class="flex-1 overflow-y-auto p-4">
+					{#if migrationStore.state.isLoadingX}
+						<div class="flex h-32 items-center justify-center">
+							<Loader2 class="size-8 animate-spin text-slate-500" />
+						</div>
+					{:else if migrationStore.state.jiraXWorklogs.length === 0}
+						<div class="flex h-32 flex-col items-center justify-center text-slate-500">
+							<Inbox class="mb-2 size-8" />
+							<p>Brak worklogów na ten dzień</p>
+						</div>
+					{:else}
+						<!-- Selection toolbar -->
+						<div
+							class="mb-3 flex items-center justify-between rounded-lg bg-slate-800/50 px-3 py-2"
+						>
+							<button
+								type="button"
+								onclick={() =>
+									allSelected
+										? migrationStore.deselectAllWorklogs()
+										: migrationStore.selectAllWorklogs()}
+								class="flex items-center gap-2 text-sm text-slate-400 transition-colors hover:text-white"
+							>
+								{#if allSelected}
+									<CheckSquare class="size-4 text-violet-400" />
+									<span>Odznacz wszystkie</span>
+								{:else}
+									<Square class="size-4" />
+									<span>Zaznacz wszystkie</span>
+								{/if}
+							</button>
+
+							{#if selectedCount > 0}
+								<div class="flex items-center gap-2">
+									<span class="text-sm text-slate-400">
+										Zaznaczono: <span class="font-semibold text-violet-400">{selectedCount}</span>
+									</span>
+									<span
+										class="rounded bg-violet-500/20 px-2 py-0.5 text-xs font-semibold text-violet-400"
+									>
+										{selectedTime}
+									</span>
+								</div>
+							{/if}
+						</div>
+
+						{#if selectedCount > 0}
+							<div
+								class="mb-3 rounded-lg border border-violet-500/30 bg-violet-500/10 p-3 text-center text-sm text-violet-300"
+							>
+								💡 Przeciągnij dowolny zaznaczony element, aby przenieść wszystkie {selectedCount} zaznaczone
+							</div>
+						{/if}
+
+						<div class="space-y-3">
+							{#each migrationStore.state.jiraXWorklogs as worklog (worklog.id)}
+								<WorklogCard
+									{worklog}
+									draggable={true}
+									showCheckbox={true}
+									isSelected={migrationStore.isWorklogSelected(worklog.id)}
+									onToggleSelect={() => migrationStore.toggleWorklogSelection(worklog.id)}
+								/>
+							{/each}
+						</div>
+					{/if}
+				</div>
+			</div>
+
+			<!-- Column 2: Jira Y (Target with Parents) -->
+			<div
+				class="flex h-full flex-col overflow-visible rounded-xl border border-emerald-500/30 bg-gradient-to-b from-emerald-500/10 to-slate-900/80 backdrop-blur-sm"
+			>
+				<!-- Header -->
+				<div class="relative z-20 overflow-visible border-b border-slate-700/50 p-4">
+					<div class="flex items-center justify-between">
+						<div>
+							<h3 class="flex items-center gap-2 text-lg font-semibold text-white">
+								{jiraYName}
+								<span
+									class="rounded-full bg-emerald-500/20 px-2 py-0.5 text-xs font-medium text-emerald-400"
+								>
+									{migrationStore.state.jiraYParents.length}
+								</span>
+							</h3>
+							<p class="mt-0.5 text-sm text-slate-400">
+								Zadania w {getMonthName(migrationStore.state.jiraYMonth)}
+							</p>
+						</div>
+
+						<div class="flex items-center gap-2">
+							{#if pendingMigration.count > 0}
+								<div
+									class="flex items-center gap-1.5 rounded-lg bg-violet-500/20 px-3 py-1.5"
+									title="Do migracji"
+								>
+									<span class="text-sm font-semibold text-violet-400">
+										+{pendingMigration.count} ({pendingMigration.time})
+									</span>
+								</div>
+							{/if}
+							<Button variant="ghost" size="sm" onclick={loadJiraYParents}>
+								<RefreshCw class="size-4" />
+							</Button>
+						</div>
+					</div>
+				</div>
+
+				<!-- Content -->
+				<div class="flex-1 overflow-y-auto p-4">
+					{#if migrationStore.state.isLoadingY}
+						<div class="flex h-32 items-center justify-center">
+							<Loader2 class="size-8 animate-spin text-slate-500" />
+						</div>
+					{:else}
+						<div class="space-y-4">
+							{#if migrationStore.state.jiraYParents.length === 0}
+								<div
+									class="flex h-32 flex-col items-center justify-center rounded-lg border-2 border-dashed border-slate-700 text-slate-500"
+								>
+									<Inbox class="mb-2 size-8" />
+									<p>Brak rodziców - dodaj pierwszego</p>
+								</div>
+							{:else}
+								{#each migrationStore.state.jiraYParents as parent (parent.id)}
+									<ParentCard {parent} />
+								{/each}
+							{/if}
+
+							<!-- Add Parent Button -->
+							<button
+								type="button"
+								onclick={() => migrationStore.openAddParentModal()}
+								class="flex w-full items-center justify-center gap-2 rounded-xl border-2 border-dashed border-slate-700 py-4 text-slate-400 transition-all hover:border-emerald-500/50 hover:bg-emerald-500/5 hover:text-emerald-400"
+							>
+								<Plus class="size-5" />
+								<span class="font-medium">Dodaj rodzica z Jira Y</span>
+							</button>
+						</div>
+					{/if}
+				</div>
+
+				<!-- Migrate Button -->
+				{#if pendingMigration.count > 0}
+					<div class="border-t border-slate-700/50 p-4">
+						<Button
+							variant="primary"
+							size="lg"
+							class="w-full"
+							onclick={openConfirmModal}
+							disabled={migrationStore.state.isMigrating}
+						>
+							{#if migrationStore.state.isMigrating}
+								<Loader2 class="size-5 animate-spin" />
+								Migrowanie...
+							{:else}
+								<Send class="size-5" />
+								Migruj {pendingMigration.count} worklogów ({pendingMigration.time})
+							{/if}
+						</Button>
+					</div>
+				{/if}
+			</div>
 		</div>
-	</div>
+	</main>
 </div>
