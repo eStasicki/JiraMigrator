@@ -5,7 +5,7 @@ export interface JiraConfig {
 	baseUrl: string;
 	email: string;
 	apiToken: string;
-	tempoToken?: string; // Opcjonalny token dla natywnego API Tempo Cloud
+	tempoToken: string; // Token dla natywnego API Tempo Cloud (opcjonalny, ale zainicjowany jako pusty string)
 }
 
 export interface Project {

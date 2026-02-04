@@ -105,10 +105,9 @@ label,
 	user-select: none;
 }
 
-/* Focus visible for accessibility */
-:focus-visible {
-	outline: 2px solid rgb(139 92 246); /* violet-500 */
-	outline-offset: 2px;
+/* Focus states handled per-component */
+:focus {
+	outline: none;
 }
 
 /* Selection color */

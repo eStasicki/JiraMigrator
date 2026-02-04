@@ -267,40 +267,48 @@
 			<div class="space-y-4">
 				<div class="flex items-center justify-between">
 					<h2 class="text-lg font-semibold text-white">Projekty</h2>
-					<Button variant="ghost" size="sm" onclick={() => (showNewProjectForm = true)}>
+					<Button variant="primary" size="sm" onclick={() => (showNewProjectForm = true)}>
 						<Plus class="size-4" />
+						Dodaj projekt
 					</Button>
 				</div>
 
 				<!-- New Project Form -->
 				{#if showNewProjectForm}
-					<div class="rounded-xl border border-violet-500/30 bg-violet-500/10 p-4">
-						<div class="flex items-center gap-2">
+					<div
+						class="overflow-hidden rounded-xl border border-violet-500/30 bg-slate-800/80 shadow-lg shadow-violet-500/10"
+					>
+						<div class="flex items-center p-1.5">
 							<input
 								type="text"
 								bind:value={newProjectName}
 								placeholder="Nazwa projektu..."
-								class="flex-1 rounded-lg border border-slate-600 bg-slate-800 px-3 py-2 text-sm text-white placeholder:text-slate-500 focus:border-violet-500 focus:ring-1 focus:ring-violet-500 focus:outline-none"
+								class="h-9 flex-1 bg-transparent pr-2 pl-2.5 text-sm text-white placeholder:text-slate-500 focus:outline-none"
 								onkeydown={(e) => e.key === 'Enter' && handleAddProject()}
 							/>
-							<Button
-								variant="primary"
-								size="sm"
-								onclick={handleAddProject}
-								disabled={!newProjectName.trim()}
-							>
-								<Plus class="size-4" />
-							</Button>
-							<Button
-								variant="ghost"
-								size="sm"
-								onclick={() => {
-									showNewProjectForm = false;
-									newProjectName = '';
-								}}
-							>
-								<X class="size-4" />
-							</Button>
+							<div class="flex items-center gap-1.5">
+								<Button
+									variant="primary"
+									size="sm"
+									onclick={handleAddProject}
+									disabled={!newProjectName.trim()}
+									class="h-9! px-4!"
+								>
+									<Plus class="size-4" />
+									Dodaj
+								</Button>
+								<Button
+									variant="ghost"
+									size="sm"
+									onclick={() => {
+										showNewProjectForm = false;
+										newProjectName = '';
+									}}
+									class="h-9! w-9! px-0!"
+								>
+									<X class="size-4" />
+								</Button>
+							</div>
 						</div>
 					</div>
 				{/if}
@@ -308,11 +316,17 @@
 				<!-- Projects List -->
 				{#if projects.length === 0}
 					<div
-						class="rounded-xl border border-dashed border-slate-700 bg-slate-800/30 p-6 text-center"
+						class="rounded-xl border border-dashed border-slate-700 bg-slate-800/30 p-8 text-center"
 					>
-						<FolderOpen class="mx-auto mb-2 size-8 text-slate-600" />
-						<p class="text-sm text-slate-500">Brak projektów</p>
-						<p class="mt-1 text-xs text-slate-600">Dodaj pierwszy projekt, aby rozpocząć</p>
+						<FolderOpen class="mx-auto mb-3 size-10 text-slate-600" />
+						<p class="font-medium text-slate-400">Brak projektów</p>
+						<p class="mt-1 mb-6 text-sm text-slate-500">
+							Dodaj swój pierwszy projekt, aby zacząć zarządzać migracją danych.
+						</p>
+						<Button variant="primary" size="md" onclick={() => (showNewProjectForm = true)}>
+							<Plus class="size-4" />
+							Dodaj pierwszy projekt
+						</Button>
 					</div>
 				{:else}
 					<div class="space-y-2">
@@ -326,7 +340,7 @@
 									: 'border-slate-700/50 bg-slate-800/40 hover:border-slate-600 hover:bg-slate-800'}"
 							>
 								<div
-									class="flex size-10 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-violet-500 to-fuchsia-600 font-bold text-white"
+									class="flex size-10 shrink-0 items-center justify-center rounded-lg bg-linear-to-br from-violet-500 to-fuchsia-600 font-bold text-white"
 								>
 									{project.name.charAt(0).toUpperCase()}
 								</div>
@@ -368,7 +382,7 @@
 						<div class="mb-6 flex items-center justify-between">
 							<div class="flex items-center gap-3">
 								<div
-									class="flex size-12 items-center justify-center rounded-xl bg-gradient-to-br from-violet-500 to-fuchsia-600 text-xl font-bold text-white"
+									class="flex size-12 items-center justify-center rounded-xl bg-linear-to-br from-violet-500 to-fuchsia-600 text-xl font-bold text-white"
 								>
 									{editingProject.name.charAt(0).toUpperCase()}
 								</div>
@@ -648,9 +662,13 @@
 						<div class="text-center">
 							<Edit2 class="mx-auto mb-4 size-12 text-slate-600" />
 							<h3 class="text-lg font-medium text-slate-400">Wybierz projekt do edycji</h3>
-							<p class="mt-2 text-sm text-slate-600">
-								Lub dodaj nowy projekt klikając przycisk + po lewej stronie
+							<p class="mt-2 mb-6 text-sm text-slate-600">
+								Lub dodaj nowy projekt, aby skonfigurować połączenia Jira
 							</p>
+							<Button variant="secondary" onclick={() => (showNewProjectForm = true)}>
+								<Plus class="size-4" />
+								Dodaj nowy projekt
+							</Button>
 						</div>
 					</div>
 				{/if}
