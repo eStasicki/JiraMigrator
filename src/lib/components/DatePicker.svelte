@@ -54,12 +54,10 @@
 	}
 
 	function formatDate(date: Date): string {
-		return date.toLocaleDateString('pl-PL', {
-			weekday: 'short',
-			year: 'numeric',
-			month: 'short',
-			day: 'numeric'
-		});
+		const day = String(date.getDate()).padStart(2, '0');
+		const month = String(date.getMonth() + 1).padStart(2, '0');
+		const year = date.getFullYear();
+		return `${day}.${month}.${year}`;
 	}
 
 	function isSameDay(a: Date, b: Date): boolean {
@@ -98,21 +96,15 @@
 <svelte:window onkeydown={handleKeydown} />
 
 <div class="relative">
-	<label class="mb-2 block text-sm font-medium text-slate-400">{label}</label>
+	{#if label}
+		<label class="mb-2 block text-sm font-medium text-slate-400">{label}</label>
+	{/if}
 	<button
 		type="button"
 		onclick={() => (showCalendar = !showCalendar)}
-		class="flex w-full items-center justify-between rounded-lg border border-slate-600 bg-slate-800/50 px-4 py-2.5 text-left text-slate-100 transition-all duration-200 hover:border-slate-500 hover:bg-slate-800 focus:border-violet-500 focus:ring-2 focus:ring-violet-500/20 focus:outline-none"
+		class="flex w-full items-center justify-center rounded-lg border border-slate-600 bg-slate-800/50 px-4 py-2.5 text-left text-slate-100 transition-all duration-200 hover:border-slate-500 hover:bg-slate-800 focus:border-violet-500 focus:ring-2 focus:ring-violet-500/20 focus:outline-none"
 	>
 		<span>{formatDate(selectedDate)}</span>
-		<svg class="size-5 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-			<path
-				stroke-linecap="round"
-				stroke-linejoin="round"
-				stroke-width="2"
-				d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"
-			/>
-		</svg>
 	</button>
 
 	{#if showCalendar}

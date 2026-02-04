@@ -2,6 +2,7 @@
 	import { ChevronDown, ChevronRight, Clock, Trash2, GripVertical } from 'lucide-svelte';
 	import type { ParentTask, WorklogEntry } from '$lib/stores/migration.svelte';
 	import { migrationStore } from '$lib/stores/migration.svelte';
+	import WorklogCard from './WorklogCard.svelte';
 
 	interface Props {
 		parent: ParentTask;
@@ -152,37 +153,7 @@
 			{:else}
 				<div class="space-y-2">
 					{#each parent.children as child (child.id)}
-						<div
-							class="group flex items-center gap-2 rounded-lg border border-slate-700/50 bg-slate-900/50 p-2 transition-all hover:border-slate-600"
-						>
-							<GripVertical class="size-4 flex-shrink-0 text-slate-600" />
-
-							<div class="min-w-0 flex-1">
-								<div class="flex items-center gap-2">
-									<span
-										class="inline-block rounded bg-violet-500/20 px-1.5 py-0.5 text-xs font-semibold text-violet-400"
-									>
-										{child.issueKey}
-									</span>
-									<span class="text-xs text-slate-400">
-										<Clock class="mr-0.5 inline-block size-3" />
-										{child.timeSpentFormatted}
-									</span>
-								</div>
-								<p class="mt-0.5 truncate text-xs text-slate-500" title={child.issueSummary}>
-									{child.issueSummary}
-								</p>
-							</div>
-
-							<button
-								type="button"
-								onclick={() => handleRemoveChild(child.id)}
-								class="flex-shrink-0 rounded p-1 text-slate-500 opacity-0 transition-all group-hover:opacity-100 hover:bg-red-500/20 hover:text-red-400"
-								title="Usuń z rodzica"
-							>
-								<Trash2 class="size-3.5" />
-							</button>
-						</div>
+						<WorklogCard worklog={child} draggable={false} showCheckbox={false} />
 					{/each}
 				</div>
 			{/if}

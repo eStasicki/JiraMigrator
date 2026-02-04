@@ -5,6 +5,7 @@ export interface JiraConfig {
 	baseUrl: string;
 	email: string;
 	apiToken: string;
+	tempoToken?: string; // Opcjonalny token dla natywnego API Tempo Cloud
 }
 
 export interface Project {
@@ -39,13 +40,15 @@ function createDefaultProject(name: string): Project {
 			name: 'Jira X',
 			baseUrl: '',
 			email: '',
-			apiToken: ''
+			apiToken: '',
+			tempoToken: ''
 		},
 		jiraY: {
 			name: 'Jira Y',
 			baseUrl: '',
 			email: '',
-			apiToken: ''
+			apiToken: '',
+			tempoToken: ''
 		},
 		createdAt: new Date().toISOString()
 	};
@@ -60,7 +63,6 @@ function createSettingsStore() {
 		if (stored) {
 			try {
 				const parsed = JSON.parse(stored);
-				// Validate structure
 				if (parsed.projects && Array.isArray(parsed.projects)) {
 					settings = parsed;
 				} else {
@@ -82,7 +84,6 @@ function createSettingsStore() {
 		const newProject = createDefaultProject(name);
 		settings.projects = [...settings.projects, newProject];
 
-		// If this is the first project, make it active
 		if (settings.projects.length === 1) {
 			settings.activeProjectId = newProject.id;
 		}
@@ -94,7 +95,6 @@ function createSettingsStore() {
 	function removeProject(projectId: string) {
 		settings.projects = settings.projects.filter((p) => p.id !== projectId);
 
-		// If we removed the active project, switch to another one
 		if (settings.activeProjectId === projectId) {
 			settings.activeProjectId = settings.projects.length > 0 ? settings.projects[0].id : null;
 		}

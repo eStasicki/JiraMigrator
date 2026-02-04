@@ -5,9 +5,9 @@
 	import {
 		fetchWorklogsFromJiraX,
 		fetchParentsFromJiraY,
-		migrateWorklogs,
-		getTotalTime
-	} from '$lib/api/mockJiraApi';
+		migrateWorklogsToJiraY
+	} from '$lib/api/jiraApi';
+	import { getTotalProgress } from '$lib/utils';
 	import WorklogCard from '$lib/components/WorklogCard.svelte';
 	import ParentCard from '$lib/components/ParentCard.svelte';
 	import DatePicker from '$lib/components/DatePicker.svelte';
@@ -32,9 +32,15 @@
 
 	// Load worklogs on mount and date change
 	async function loadJiraXWorklogs() {
+		if (!activeProject) return;
 		migrationStore.setLoadingX(true);
 		try {
-			const worklogs = await fetchWorklogsFromJiraX(migrationStore.state.jiraXDate);
+			const worklogs = await fetchWorklogsFromJiraX(
+				activeProject.jiraX.baseUrl,
+				activeProject.jiraX.email,
+				activeProject.jiraX.apiToken,
+				migrationStore.state.jiraXDate
+			);
 			migrationStore.setJiraXWorklogs(worklogs);
 		} finally {
 			migrationStore.setLoadingX(false);
@@ -42,9 +48,16 @@
 	}
 
 	async function loadJiraYParents() {
+		if (!activeProject) return;
 		migrationStore.setLoadingY(true);
 		try {
-			const parents = await fetchParentsFromJiraY(migrationStore.state.jiraYMonth);
+			const parents = await fetchParentsFromJiraY(
+				activeProject.jiraY.baseUrl,
+				activeProject.jiraY.email,
+				activeProject.jiraY.apiToken,
+				migrationStore.state.jiraXDate,
+				activeProject.jiraY.tempoToken
+			);
 			migrationStore.setJiraYParents(parents);
 		} finally {
 			migrationStore.setLoadingY(false);
@@ -53,7 +66,9 @@
 
 	function handleJiraXDateChange(date: Date) {
 		migrationStore.setJiraXDate(date);
+		migrationStore.setJiraYMonth(date);
 		loadJiraXWorklogs();
+		loadJiraYParents();
 	}
 
 	function openConfirmModal() {
@@ -64,6 +79,7 @@
 	}
 
 	async function handleMigrate() {
+		if (!activeProject) return;
 		migrationStore.setMigrating(true);
 		migrationMessage = null;
 
@@ -74,7 +90,12 @@
 				children: s.children
 			}));
 
-			const result = await migrateWorklogs(migrations);
+			const result = await migrateWorklogsToJiraY(
+				activeProject.jiraY.baseUrl,
+				activeProject.jiraY.email,
+				activeProject.jiraY.apiToken,
+				migrations
+			);
 
 			if (result.success) {
 				migrationStore.clearAllChildren();
@@ -184,7 +205,34 @@
 	{/if}
 
 	<!-- Main Content -->
-	<main class="flex flex-1 flex-col gap-4 p-4 lg:p-6">
+	<main class="mx-auto flex w-full max-w-[1600px] flex-1 flex-col gap-6 p-4 lg:p-6">
+		<!-- Central Date Picker -->
+		<div class="relative z-30 flex flex-col items-center justify-center gap-2 py-1">
+			<div
+				class="flex items-center gap-3 rounded-xl border border-slate-700 bg-slate-800/80 p-1.5 shadow-lg backdrop-blur-md"
+			>
+				<div class="flex items-center gap-3 px-4 py-1">
+					<div
+						class="flex size-8 items-center justify-center rounded-lg bg-violet-500/20 text-violet-400"
+					>
+						<Clock class="size-4" />
+					</div>
+					<DatePicker
+						bind:selectedDate={migrationStore.state.jiraXDate}
+						onDateChange={handleJiraXDateChange}
+						label=""
+					/>
+				</div>
+			</div>
+
+			{#if migrationStore.state.isLoadingX || migrationStore.state.isLoadingY}
+				<div class="flex animate-pulse items-center gap-2 text-xs font-medium text-violet-400">
+					<Loader2 class="size-3 animate-spin" />
+					Aktualizowanie danych...
+				</div>
+			{/if}
+		</div>
+
 		<!-- Two Column Layout -->
 		<div
 			class="grid flex-1 grid-cols-1 gap-4 lg:grid-cols-2 lg:gap-6"
@@ -214,18 +262,10 @@
 								<div class="flex items-center gap-1.5 rounded-lg bg-slate-800 px-3 py-1.5">
 									<Clock class="size-4 text-violet-400" />
 									<span class="text-sm font-semibold text-white">
-										{getTotalTime(migrationStore.state.jiraXWorklogs)}
+										{getTotalProgress(migrationStore.state.jiraXWorklogs)}
 									</span>
 								</div>
 							{/if}
-							<DatePicker
-								bind:selectedDate={migrationStore.state.jiraXDate}
-								onDateChange={handleJiraXDateChange}
-								label=""
-							/>
-							<Button variant="ghost" size="sm" onclick={loadJiraXWorklogs}>
-								<RefreshCw class="size-4" />
-							</Button>
 						</div>
 					</div>
 				</div>
@@ -332,9 +372,6 @@
 									</span>
 								</div>
 							{/if}
-							<Button variant="ghost" size="sm" onclick={loadJiraYParents}>
-								<RefreshCw class="size-4" />
-							</Button>
 						</div>
 					</div>
 				</div>

@@ -1,29 +1,41 @@
 <script lang="ts">
-	import { X, Search, Loader2, Plus } from 'lucide-svelte';
+	import { X, Search, Loader2, Plus, Check, CheckSquare, Square } from 'lucide-svelte';
 	import { migrationStore, type ParentTask } from '$lib/stores/migration.svelte';
-	import { searchJiraYTasks } from '$lib/api/mockJiraApi';
+	import { settingsStore } from '$lib/stores/settings.svelte';
+	import { searchJiraIssues } from '$lib/api/jiraApi';
 	import Button from './Button.svelte';
+	import { SvelteSet } from 'svelte/reactivity';
 
 	let searchTimeout: ReturnType<typeof setTimeout> | null = null;
+	let selectedIssues = $state(new SvelteSet<ParentTask>());
 
 	async function handleSearch() {
 		const query = migrationStore.state.searchQuery;
+		const activeProject = settingsStore.getActiveProject();
 
-		if (!query.trim()) {
+		if (!query.trim() || !activeProject) {
 			migrationStore.setSearchResults([]);
+			selectedIssues.clear(); // Clear selection when search query is empty or no active project
 			return;
 		}
 
 		migrationStore.setIsSearching(true);
 		try {
-			const results = await searchJiraYTasks(query);
-			// Filter out already added parents
-			const existingKeys = migrationStore.state.jiraYParents.map((p) => p.issueKey);
-			const filteredResults = results.filter((r) => !existingKeys.includes(r.issueKey));
-			migrationStore.setSearchResults(filteredResults);
+			const results = await searchJiraIssues(
+				activeProject.jiraY.baseUrl,
+				activeProject.jiraY.email,
+				activeProject.jiraY.apiToken,
+				query
+			);
+			console.log('DEBUG MODAL: API Results:', results);
+			migrationStore.setSearchResults(results);
 		} finally {
 			migrationStore.setIsSearching(false);
 		}
+	}
+
+	function isAlreadyAdded(key: string) {
+		return migrationStore.state.jiraYParents.some((p) => p.issueKey === key);
 	}
 
 	function handleInputChange(e: Event) {
@@ -35,12 +47,23 @@
 		searchTimeout = setTimeout(handleSearch, 300);
 	}
 
-	function handleAddParent(parent: ParentTask) {
-		migrationStore.addParent(parent);
-		migrationStore.closeAddParentModal();
+	function toggleSelection(parent: ParentTask) {
+		if (selectedIssues.has(parent)) {
+			selectedIssues.delete(parent);
+		} else {
+			selectedIssues.add(parent);
+		}
+	}
+
+	function handleAddSelected() {
+		for (const parent of selectedIssues) {
+			migrationStore.addParent(parent);
+		}
+		handleClose();
 	}
 
 	function handleClose() {
+		selectedIssues.clear();
 		migrationStore.closeAddParentModal();
 	}
 
@@ -53,6 +76,16 @@
 	function handleBackdropClick(e: MouseEvent) {
 		if (e.target === e.currentTarget) {
 			handleClose();
+		}
+	}
+
+	function toggleSelectAll() {
+		if (selectedIssues.size === migrationStore.state.searchResults.length) {
+			selectedIssues.clear();
+		} else {
+			for (const res of migrationStore.state.searchResults) {
+				selectedIssues.add(res);
+			}
 		}
 	}
 </script>
@@ -69,14 +102,14 @@
 	>
 		<!-- Modal -->
 		<div
-			class="w-full max-w-lg rounded-2xl border border-slate-700 bg-slate-800 shadow-2xl"
+			class="w-full max-w-xl rounded-2xl border border-slate-700 bg-slate-800 shadow-2xl"
 			role="dialog"
 			aria-modal="true"
 			aria-labelledby="modal-title"
 		>
 			<!-- Header -->
 			<div class="flex items-center justify-between border-b border-slate-700 p-4">
-				<h2 id="modal-title" class="text-lg font-semibold text-white">Dodaj rodzica z Jira Y</h2>
+				<h2 id="modal-title" class="text-lg font-semibold text-white">Dodaj rodziców z Jira Y</h2>
 				<button
 					type="button"
 					onclick={handleClose}
@@ -103,49 +136,131 @@
 						/>
 					{/if}
 				</div>
+
+				{#if selectedIssues.size > 0}
+					<div class="mt-3 flex flex-wrap gap-2 px-1">
+						<span class="w-full text-[10px] font-bold tracking-widest text-slate-500 uppercase"
+							>Wybrane ({selectedIssues.size}):</span
+						>
+						{#each Array.from(selectedIssues) as issue}
+							<div
+								class="flex items-center gap-1.5 rounded-full bg-violet-500/20 py-1 pr-1.5 pl-2.5 text-xs font-semibold text-violet-400 ring-1 ring-violet-500/30"
+							>
+								{issue.issueKey}
+								<button
+									onclick={() => selectedIssues.delete(issue)}
+									class="rounded-full bg-violet-500/20 p-0.5 transition-colors hover:bg-violet-500 hover:text-white"
+								>
+									<X class="size-3" />
+								</button>
+							</div>
+						{/each}
+					</div>
+				{/if}
+
+				{#if migrationStore.state.searchResults.length > 0}
+					<div class="mt-4 flex items-center justify-between px-1">
+						<button
+							onclick={toggleSelectAll}
+							class="flex items-center gap-2 text-xs font-medium text-slate-400 transition-colors hover:text-white"
+						>
+							{#if selectedIssues.size === migrationStore.state.searchResults.length}
+								<CheckSquare class="size-4 text-violet-400" />
+								<span>Odznacz wszystkie</span>
+							{:else}
+								<Square class="size-4" />
+								<span>Zaznacz wszystkie</span>
+							{/if}
+						</button>
+						<span class="text-xs text-slate-500">
+							Znaleziono: {migrationStore.state.searchResults.length}
+						</span>
+					</div>
+				{/if}
 			</div>
 
 			<!-- Results -->
-			<div class="max-h-80 overflow-y-auto border-t border-slate-700 p-4">
+			<div class="max-h-80 overflow-y-auto border-t border-slate-700 p-2">
 				{#if migrationStore.state.searchResults.length > 0}
-					<div class="space-y-2">
+					<div class="space-y-1">
 						{#each migrationStore.state.searchResults as result}
+							{@const added = isAlreadyAdded(result.issueKey)}
 							<button
 								type="button"
-								onclick={() => handleAddParent(result)}
-								class="flex w-full items-center gap-3 rounded-lg border border-slate-700 bg-slate-900/50 p-3 text-left transition-all hover:border-violet-500/50 hover:bg-slate-900"
+								onclick={() => !added && toggleSelection(result)}
+								disabled={added}
+								class="flex w-full items-center gap-3 rounded-lg border p-3 text-left transition-all
+                                    {selectedIssues.has(result)
+									? 'border-violet-500/50 bg-violet-500/10'
+									: added
+										? 'cursor-not-allowed border-transparent bg-slate-900/50 opacity-60'
+										: 'border-transparent bg-transparent hover:bg-slate-900'}"
 							>
+								<!-- Checkbox Visual -->
 								<div
-									class="flex size-10 flex-shrink-0 items-center justify-center rounded-lg bg-emerald-500/20"
+									class="flex size-5 shrink-0 items-center justify-center rounded border-2 transition-all
+                                    {selectedIssues.has(result)
+										? 'border-violet-500 bg-violet-500 text-white'
+										: added
+											? 'border-slate-700 bg-slate-800'
+											: 'border-slate-600 bg-slate-900'}"
 								>
-									<Plus class="size-5 text-emerald-400" />
+									{#if selectedIssues.has(result)}
+										<Check class="size-3" />
+									{:else if added}
+										<Plus class="size-3 rotate-45 text-slate-500" />
+									{/if}
 								</div>
+
 								<div class="min-w-0 flex-1">
-									<span
-										class="inline-block rounded bg-emerald-500/20 px-2 py-0.5 text-xs font-semibold text-emerald-400"
-									>
-										{result.issueKey}
-									</span>
+									<div class="flex items-center gap-2">
+										<span
+											class="inline-block rounded bg-emerald-500/20 px-2 py-0.5 text-xs font-semibold text-emerald-400"
+										>
+											{result.issueKey}
+										</span>
+										<span class="text-[10px] font-bold text-slate-500 uppercase">{result.type}</span
+										>
+										{#if added}
+											<span
+												class="rounded bg-slate-700 px-1.5 py-0.5 text-[10px] font-bold text-slate-400 uppercase"
+											>
+												Już dodano
+											</span>
+										{/if}
+									</div>
 									<p class="mt-1 truncate text-sm text-slate-300">{result.issueSummary}</p>
 								</div>
 							</button>
 						{/each}
 					</div>
 				{:else if migrationStore.state.searchQuery && !migrationStore.state.isSearching}
-					<div class="py-8 text-center text-slate-500">
+					<div class="py-12 text-center text-slate-500">
 						<p>Nie znaleziono zadań pasujących do "{migrationStore.state.searchQuery}"</p>
 					</div>
 				{:else if !migrationStore.state.searchQuery}
-					<div class="py-8 text-center text-slate-500">
-						<Search class="mx-auto mb-3 size-8 opacity-50" />
+					<div class="py-12 text-center text-slate-500">
+						<Search class="mx-auto mb-3 size-8 opacity-30" />
 						<p>Wpisz klucz lub nazwę zadania, aby wyszukać</p>
 					</div>
 				{/if}
 			</div>
 
 			<!-- Footer -->
-			<div class="border-t border-slate-700 p-4">
-				<Button variant="secondary" onclick={handleClose} class="w-full">Anuluj</Button>
+			<div class="flex gap-3 border-t border-slate-700 p-4">
+				<Button variant="secondary" onclick={handleClose} class="flex-1">Anuluj</Button>
+				<Button
+					variant="primary"
+					onclick={handleAddSelected}
+					class="flex-1"
+					disabled={selectedIssues.size === 0}
+				>
+					{#if selectedIssues.size > 0}
+						Dodaj zaznaczone ({selectedIssues.size})
+					{:else}
+						Wybierz zadania
+					{/if}
+				</Button>
 			</div>
 		</div>
 	</div>

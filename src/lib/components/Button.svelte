@@ -6,6 +6,7 @@
 		size?: 'sm' | 'md' | 'lg';
 		disabled?: boolean;
 		type?: 'button' | 'submit' | 'reset';
+		title?: string;
 		onclick?: (e: MouseEvent) => void;
 		children: Snippet;
 		class?: string;
@@ -16,6 +17,7 @@
 		size = 'md',
 		disabled = false,
 		type = 'button',
+		title,
 		onclick,
 		children,
 		class: className = ''
@@ -45,6 +47,7 @@
 	{type}
 	{disabled}
 	{onclick}
+	{title}
 	class="{baseClasses} {variantClasses[variant]} {sizeClasses[size]} {className}"
 >
 	{@render children()}

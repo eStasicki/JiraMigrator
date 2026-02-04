@@ -1,7 +1,12 @@
 @import 'tailwindcss';
 
 /* Custom font */
-body {
+/* Custom font application to all elements */
+body,
+input,
+button,
+select,
+textarea {
 	font-family:
 		'Inter',
 		system-ui,
@@ -9,6 +14,18 @@ body {
 		sans-serif;
 	-webkit-font-smoothing: antialiased;
 	-moz-osx-font-smoothing: grayscale;
+}
+
+/* Global cursor pointers for interactive elements */
+button,
+a,
+input[type='checkbox'],
+input[type='radio'],
+input[type='submit'],
+input[type='button'],
+label,
+[role='button'] {
+	cursor: pointer;
 }
 
 /* Custom scrollbar for dark theme */

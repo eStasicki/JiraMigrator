@@ -1,4 +1,5 @@
 import { SvelteSet } from 'svelte/reactivity';
+import { formatSeconds } from '$lib/utils';
 
 export interface WorklogEntry {
 	id: string;
@@ -17,6 +18,8 @@ export interface ParentTask {
 	issueSummary: string;
 	totalTimeSpentSeconds: number;
 	totalTimeSpentFormatted: string;
+	type: string;
+	status: string;
 	children: WorklogEntry[];
 	isExpanded: boolean;
 }
@@ -36,25 +39,25 @@ export interface MigrationState {
 	isSearching: boolean;
 }
 
-function formatTimeSpent(seconds: number): string {
-	const hours = Math.floor(seconds / 3600);
-	const minutes = Math.floor((seconds % 3600) / 60);
+function parseFormattedTime(formatted: string): number {
+	let totalSeconds = 0;
+	const hMatch = formatted.match(/(\d+)h/);
+	const mMatch = formatted.match(/(\d+)m/);
 
-	if (hours > 0 && minutes > 0) {
-		return `${hours}h ${minutes}m`;
-	} else if (hours > 0) {
-		return `${hours}h`;
-	} else if (minutes > 0) {
-		return `${minutes}m`;
-	} else {
-		return '0m';
+	if (hMatch) totalSeconds += parseInt(hMatch[1]) * 3600;
+	if (mMatch) totalSeconds += parseInt(mMatch[1]) * 60;
+
+	if (!hMatch && !mMatch && /^\d+$/.test(formatted)) {
+		totalSeconds = parseInt(formatted) * 60;
 	}
+
+	return totalSeconds;
 }
 
 function createMigrationStore() {
 	const today = new Date();
 
-	let state = $state<MigrationState>({
+	const state = $state<MigrationState>({
 		jiraXDate: today,
 		jiraYMonth: today,
 		jiraXWorklogs: [],
@@ -79,7 +82,6 @@ function createMigrationStore() {
 
 	function setJiraXWorklogs(worklogs: WorklogEntry[]) {
 		state.jiraXWorklogs = worklogs;
-		// Clear selection when loading new worklogs
 		state.selectedWorklogIds = new SvelteSet<string>();
 	}
 
@@ -106,7 +108,6 @@ function createMigrationStore() {
 		}
 	}
 
-	// Selection functions
 	function toggleWorklogSelection(worklogId: string) {
 		const newSet = new SvelteSet(state.selectedWorklogIds);
 		if (newSet.has(worklogId)) {
@@ -140,7 +141,7 @@ function createMigrationStore() {
 	function getSelectedTotalTime(): string {
 		const selected = getSelectedWorklogs();
 		const totalSeconds = selected.reduce((sum, w) => sum + w.timeSpentSeconds, 0);
-		return formatTimeSpent(totalSeconds);
+		return formatSeconds(totalSeconds);
 	}
 
 	function addSelectedToParent(parentId: string) {
@@ -152,15 +153,12 @@ function createMigrationStore() {
 	}
 
 	function addChildToParent(parentId: string, worklog: WorklogEntry) {
-		// Remove from Jira X worklogs
 		state.jiraXWorklogs = state.jiraXWorklogs.filter((w) => w.id !== worklog.id);
 
-		// Also remove from any other parent (in case moving between parents)
 		for (const parent of state.jiraYParents) {
 			parent.children = parent.children.filter((c) => c.id !== worklog.id);
 		}
 
-		// Add to target parent
 		const targetParent = state.jiraYParents.find((p) => p.id === parentId);
 		if (targetParent) {
 			if (!targetParent.children.find((c) => c.id === worklog.id)) {
@@ -175,9 +173,7 @@ function createMigrationStore() {
 		if (parent) {
 			const worklog = parent.children.find((c) => c.id === worklogId);
 			if (worklog) {
-				// Remove from parent
 				parent.children = parent.children.filter((c) => c.id !== worklogId);
-				// Add back to Jira X
 				if (!state.jiraXWorklogs.find((w) => w.id === worklogId)) {
 					state.jiraXWorklogs = [...state.jiraXWorklogs, worklog];
 				}
@@ -194,13 +190,11 @@ function createMigrationStore() {
 	function removeParent(parentId: string) {
 		const parent = state.jiraYParents.find((p) => p.id === parentId);
 		if (parent) {
-			// Move children back to Jira X
 			for (const child of parent.children) {
 				if (!state.jiraXWorklogs.find((w) => w.id === child.id)) {
 					state.jiraXWorklogs = [...state.jiraXWorklogs, child];
 				}
 			}
-			// Remove parent
 			state.jiraYParents = state.jiraYParents.filter((p) => p.id !== parentId);
 		}
 	}
@@ -233,7 +227,7 @@ function createMigrationStore() {
 		const parent = state.jiraYParents.find((p) => p.id === parentId);
 		if (!parent) return '0m';
 		const totalSeconds = parent.children.reduce((sum, c) => sum + c.timeSpentSeconds, 0);
-		return formatTimeSpent(totalSeconds);
+		return formatSeconds(totalSeconds);
 	}
 
 	function getTotalPendingMigration(): { count: number; time: string } {
@@ -243,7 +237,7 @@ function createMigrationStore() {
 			count += parent.children.length;
 			totalSeconds += parent.children.reduce((sum, c) => sum + c.timeSpentSeconds, 0);
 		}
-		return { count, time: formatTimeSpent(totalSeconds) };
+		return { count, time: formatSeconds(totalSeconds) };
 	}
 
 	function clearAllChildren() {
@@ -269,8 +263,35 @@ function createMigrationStore() {
 				parentKey: p.issueKey,
 				parentSummary: p.issueSummary,
 				children: p.children,
-				totalTime: formatTimeSpent(p.children.reduce((sum, c) => sum + c.timeSpentSeconds, 0))
+				totalTime: formatSeconds(p.children.reduce((sum, c) => sum + c.timeSpentSeconds, 0))
 			}));
+	}
+
+	function updateWorklog(id: string, updates: { comment?: string; timeSpentFormatted?: string }) {
+		const xIdx = state.jiraXWorklogs.findIndex((w) => w.id === id);
+		if (xIdx !== -1) {
+			const w = state.jiraXWorklogs[xIdx];
+			if (updates.comment !== undefined) w.comment = updates.comment;
+			if (updates.timeSpentFormatted !== undefined) {
+				w.timeSpentFormatted = updates.timeSpentFormatted;
+				w.timeSpentSeconds = parseFormattedTime(updates.timeSpentFormatted);
+			}
+		}
+
+		for (const parent of state.jiraYParents) {
+			const yIdx = parent.children.findIndex((c) => c.id === id);
+			if (yIdx !== -1) {
+				const c = parent.children[yIdx];
+				if (updates.comment !== undefined) {
+					c.comment = updates.comment;
+					c.issueSummary = updates.comment;
+				}
+				if (updates.timeSpentFormatted !== undefined) {
+					c.timeSpentFormatted = updates.timeSpentFormatted;
+					c.timeSpentSeconds = parseFormattedTime(updates.timeSpentFormatted);
+				}
+			}
+		}
 	}
 
 	return {
@@ -298,7 +319,6 @@ function createMigrationStore() {
 		getTotalPendingMigration,
 		clearAllChildren,
 		getMigrationSummary,
-		// Selection
 		toggleWorklogSelection,
 		selectAllWorklogs,
 		deselectAllWorklogs,
@@ -306,7 +326,8 @@ function createMigrationStore() {
 		getSelectedWorklogs,
 		getSelectedCount,
 		getSelectedTotalTime,
-		addSelectedToParent
+		addSelectedToParent,
+		updateWorklog
 	};
 }
 

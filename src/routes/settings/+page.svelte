@@ -1,6 +1,11 @@
 <script lang="ts">
 	import { goto } from '$app/navigation';
 	import { settingsStore, type Project } from '$lib/stores/settings.svelte';
+	import {
+		testConnectionToJira,
+		testConnectionToTempo,
+		type ConnectionTestResult
+	} from '$lib/api/jiraApi';
 	import Button from '$lib/components/Button.svelte';
 	import Input from '$lib/components/Input.svelte';
 	import Card from '$lib/components/Card.svelte';
@@ -16,7 +21,9 @@
 		FolderOpen,
 		ChevronRight,
 		Edit2,
-		X
+		X,
+		Wifi,
+		Loader2
 	} from 'lucide-svelte';
 
 	// State
@@ -31,6 +38,14 @@
 	let showResetModal = $state(false);
 	let projectToDelete = $state<string | null>(null);
 
+	// Connection test state
+	let testingConnectionX = $state(false);
+	let connectionTestResultX = $state<ConnectionTestResult | null>(null);
+	let testingConnectionY = $state(false);
+	let connectionTestResultY = $state<ConnectionTestResult | null>(null);
+	let testingTempoY = $state(false);
+	let connectionTestResultTempoY = $state<ConnectionTestResult | null>(null);
+
 	// Current editing project
 	let editingProject = $state<Project | null>(null);
 
@@ -40,12 +55,76 @@
 	function startEditingProject(project: Project) {
 		editingProjectId = project.id;
 		// Deep clone for editing
-		editingProject = JSON.parse(JSON.stringify(project));
+		const clone = JSON.parse(JSON.stringify(project));
+
+		// Ensure tempoToken exists to avoid binding errors (string | undefined)
+		if (clone.jiraX && !clone.jiraX.tempoToken) clone.jiraX.tempoToken = '';
+		if (clone.jiraY && !clone.jiraY.tempoToken) clone.jiraY.tempoToken = '';
+
+		editingProject = clone;
+		// Reset connection test state
+		connectionTestResultX = null;
+		connectionTestResultY = null;
+		connectionTestResultTempoY = null;
 	}
 
 	function cancelEditing() {
 		editingProjectId = null;
 		editingProject = null;
+		connectionTestResultX = null;
+		connectionTestResultY = null;
+		connectionTestResultTempoY = null;
+	}
+
+	async function handleTestConnectionX() {
+		if (!editingProject) return;
+
+		testingConnectionX = true;
+		connectionTestResultX = null;
+
+		try {
+			connectionTestResultX = await testConnectionToJira(
+				editingProject.jiraX.baseUrl,
+				editingProject.jiraX.email,
+				editingProject.jiraX.apiToken
+			);
+		} finally {
+			testingConnectionX = false;
+		}
+	}
+
+	async function handleTestConnectionY() {
+		if (!editingProject) return;
+
+		testingConnectionY = true;
+		connectionTestResultY = null;
+
+		try {
+			connectionTestResultY = await testConnectionToJira(
+				editingProject.jiraY.baseUrl,
+				editingProject.jiraY.email,
+				editingProject.jiraY.apiToken
+			);
+		} finally {
+			testingConnectionY = false;
+		}
+	}
+
+	async function handleTestTempoY() {
+		if (!editingProject) return;
+
+		testingTempoY = true;
+		connectionTestResultTempoY = null;
+
+		try {
+			// Używamy dedykowanego tempoToken dla testu Tempo
+			connectionTestResultTempoY = await testConnectionToTempo(
+				editingProject.jiraY.baseUrl,
+				editingProject.jiraY.tempoToken || ''
+			);
+		} finally {
+			testingTempoY = false;
+		}
 	}
 
 	function handleSaveProject() {
@@ -349,6 +428,51 @@
 										placeholder="Twój API token z Atlassian"
 										required
 									/>
+
+									<!-- Test Connection Button -->
+									<div class="border-t border-slate-700/50 pt-4">
+										<Button
+											variant="secondary"
+											size="sm"
+											onclick={handleTestConnectionX}
+											disabled={testingConnectionX ||
+												!editingProject?.jiraX.baseUrl ||
+												!editingProject?.jiraX.email ||
+												!editingProject?.jiraX.apiToken}
+											class="w-full"
+										>
+											{#if testingConnectionX}
+												<Loader2 class="size-4 animate-spin" />
+												Testowanie...
+											{:else}
+												<Wifi class="size-4" />
+												Test połączenia
+											{/if}
+										</Button>
+
+										{#if connectionTestResultX}
+											<div
+												class="mt-3 flex items-start gap-2 rounded-lg p-3 text-sm
+													{connectionTestResultX.success
+													? 'bg-emerald-500/10 text-emerald-400'
+													: 'bg-red-500/10 text-red-400'}"
+											>
+												{#if connectionTestResultX.success}
+													<CheckCircle class="mt-0.5 size-4 shrink-0" />
+												{:else}
+													<AlertTriangle class="mt-0.5 size-4 shrink-0" />
+												{/if}
+												<div>
+													<p class="font-medium">{connectionTestResultX.message}</p>
+													{#if connectionTestResultX.success && connectionTestResultX.serverInfo}
+														<p class="mt-1 text-xs opacity-80">
+															Serwer: {connectionTestResultX.serverInfo}
+														</p>
+													{/if}
+												</div>
+											</div>
+										{/if}
+									</div>
 								</div>
 							</Card>
 
@@ -380,12 +504,102 @@
 									/>
 									<Input
 										id="jiraY-token"
-										label="API Token"
+										label="Jira API Token"
 										type="password"
 										bind:value={editingProject.jiraY.apiToken}
 										placeholder="Twój API token z Atlassian"
 										required
 									/>
+									<Input
+										id="jiraY-tempo-token"
+										label="Tempo API Token"
+										type="password"
+										bind:value={editingProject.jiraY.tempoToken}
+										placeholder="Twój API token z Tempo"
+									/>
+
+									<!-- Test Connection Buttons -->
+									<div class="space-y-3 border-t border-slate-700/50 pt-4">
+										<div class="grid grid-cols-2 gap-3">
+											<Button
+												variant="secondary"
+												size="sm"
+												onclick={handleTestConnectionY}
+												disabled={testingConnectionY ||
+													!editingProject?.jiraY.baseUrl ||
+													!editingProject?.jiraY.email ||
+													!editingProject?.jiraY.apiToken}
+												class="w-full"
+											>
+												{#if testingConnectionY}
+													<Loader2 class="size-4 animate-spin" />
+													Jira...
+												{:else}
+													<Wifi class="size-4" />
+													Test Jira
+												{/if}
+											</Button>
+
+											<Button
+												variant="secondary"
+												size="sm"
+												onclick={handleTestTempoY}
+												disabled={testingTempoY ||
+													!editingProject?.jiraY.baseUrl ||
+													!editingProject?.jiraY.tempoToken}
+												class="w-full border-emerald-500/30 hover:bg-emerald-500/10"
+											>
+												{#if testingTempoY}
+													<Loader2 class="size-4 animate-spin" />
+													Tempo...
+												{:else}
+													<CheckCircle class="size-4" />
+													Test Tempo
+												{/if}
+											</Button>
+										</div>
+
+										{#if connectionTestResultY}
+											<div
+												class="flex items-start gap-2 rounded-lg p-3 text-sm
+													{connectionTestResultY.success
+													? 'bg-emerald-500/10 text-emerald-400'
+													: 'bg-red-500/10 text-red-400'}"
+											>
+												{#if connectionTestResultY.success}
+													<CheckCircle class="mt-0.5 size-4 shrink-0" />
+												{:else}
+													<AlertTriangle class="mt-0.5 size-4 shrink-0" />
+												{/if}
+												<div>
+													<p class="font-medium">{connectionTestResultY.message}</p>
+												</div>
+											</div>
+										{/if}
+
+										{#if connectionTestResultTempoY}
+											<div
+												class="flex items-start gap-2 rounded-lg p-3 text-sm
+													{connectionTestResultTempoY.success
+													? 'border border-emerald-500/30 bg-emerald-500/20 text-emerald-400'
+													: 'bg-red-500/10 text-red-400'}"
+											>
+												{#if connectionTestResultTempoY.success}
+													<CheckCircle class="mt-0.5 size-4 shrink-0" />
+												{:else}
+													<AlertTriangle class="mt-0.5 size-4 shrink-0" />
+												{/if}
+												<div>
+													<p class="font-medium">Tempo: {connectionTestResultTempoY.message}</p>
+													{#if connectionTestResultTempoY.success && connectionTestResultTempoY.serverInfo}
+														<p class="mt-1 text-xs opacity-80">
+															{connectionTestResultTempoY.serverInfo}
+														</p>
+													{/if}
+												</div>
+											</div>
+										{/if}
+									</div>
 								</div>
 							</Card>
 						</div>
