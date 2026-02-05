@@ -147,6 +147,29 @@ export async function fetchWorklogsFromJiraX(
 	if (typeof window === 'undefined' || !baseUrl.startsWith('http')) return [];
 	try {
 		const dateStr = getLocalDateString(date);
+
+		// 1. Get current user's accountId to filter worklogs strictly
+		const myselfRes = await fetch('/api/jira/proxy', {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify({
+				baseUrl,
+				email,
+				apiToken,
+				endpoint: '/rest/api/3/myself',
+				method: 'GET'
+			})
+		});
+
+		let currentUserAccountId: string | undefined;
+		let currentUserName: string | undefined;
+		if (myselfRes.ok) {
+			const myselfData = await myselfRes.json();
+			currentUserAccountId = myselfData.accountId;
+			currentUserName = myselfData.name;
+		}
+
+		// 2. Search for issues where the user has logged time today
 		const jql = `worklogDate = '${dateStr}' AND worklogAuthor = currentUser()`;
 		const response = await fetch('/api/jira/proxy', {
 			method: 'POST',
@@ -157,7 +180,7 @@ export async function fetchWorklogsFromJiraX(
 				apiToken,
 				endpoint: '/rest/api/3/search/jql',
 				method: 'POST',
-				body: { jql, fields: ['key', 'summary', 'labels'], maxResults: 100 }
+				body: { jql, fields: ['key', 'summary', 'labels', 'issuetype'], maxResults: 100 }
 			})
 		});
 		const data = await response.json();
@@ -177,7 +200,43 @@ export async function fetchWorklogsFromJiraX(
 			if (!wlRes.ok) continue;
 			const wlData = await wlRes.json();
 			(wlData.worklogs || []).forEach((wl: any) => {
-				if (wl.started.startsWith(dateStr)) {
+				// Filter by date AND author
+				// Check strict date match (string prefix YYYY-MM-DD)
+				const isDateMatch = wl.started.startsWith(dateStr);
+
+				// Check author match
+				let isAuthorMatch = false;
+
+				// 1. Match by Email (Server/DC/App.js logic)
+				if (email && wl.author?.emailAddress) {
+					if (wl.author.emailAddress.toLowerCase() === email.toLowerCase()) {
+						isAuthorMatch = true;
+					}
+				}
+
+				// 2. Match by AccountId (Cloud logic)
+				if (!isAuthorMatch && currentUserAccountId && wl.author?.accountId) {
+					if (wl.author.accountId === currentUserAccountId) {
+						isAuthorMatch = true;
+					}
+				}
+
+				// 3. Match by Display Name/Self (Fallback for really old servers or weird proxies)
+				// If we haven't matched yet, and we are desperate...
+				// However, defaulting to 'true' caused the bug of showing other's worklogs.
+				// optimizing: if JQL worked correctly with 'currentUser()', we should theoretically only see our worklogs.
+				// But if JQL returned an issue where *multiple* people logged time (common), fetching /worklog returns ALL worklogs.
+				// We MUST filter strictly. If neither Email nor ID matches, we skip.
+
+				// 4. Special case: If user provided 'myself' data has a 'name' and worklog has 'name' (username)
+				// This handles cases where emailAddress might be hidden but username is visible
+				if (!isAuthorMatch && currentUserName && wl.author?.name) {
+					if (currentUserName === wl.author.name) {
+						isAuthorMatch = true;
+					}
+				}
+
+				if (isDateMatch && isAuthorMatch) {
 					results.push({
 						id: wl.id,
 						issueKey: issue.key,
@@ -187,6 +246,7 @@ export async function fetchWorklogsFromJiraX(
 						comment:
 							wl.comment?.content?.[0]?.content?.[0]?.text || wl.comment || issue.fields.summary,
 						labels: issue.fields.labels || [],
+						issueType: issue.fields.issuetype?.name || '',
 						date: dateStr
 					});
 				}
@@ -214,7 +274,26 @@ export async function searchJiraIssues(
 
 	try {
 		// 1. Try JQL Search
-		const jql = `key ~ "${cleanQuery}*" OR summary ~ "${cleanQuery}*" OR project = "${cleanQuery}"`;
+		// Build JQL dynamically to avoid 400 Bad Request on invalid project keys (e.g. searching for "PROJ-123" in project field)
+		const isIssueKey = /^[a-zA-Z]+-\d+$/.test(cleanQuery);
+		let jql = `summary ~ "${cleanQuery}*"`; // Always search summary
+
+		if (isIssueKey) {
+			// If it looks like a specific issue key, match exact key strongly
+			jql = `key = "${cleanQuery}" OR ${jql}`;
+		} else {
+			// Loose key match
+			jql = `key ~ "${cleanQuery}*" OR ${jql}`;
+
+			// Only try project search if query doesn't look like an issue key
+			// and looks like a potential project key (alphanumeric)
+			if (/^[a-zA-Z0-9]+$/.test(cleanQuery)) {
+				jql += ` OR project = "${cleanQuery}"`;
+			}
+		}
+
+		console.log('Searching JQL:', jql); // Debugging
+
 		const response = await fetch('/api/jira/proxy', {
 			method: 'POST',
 			headers: { 'Content-Type': 'application/json' },

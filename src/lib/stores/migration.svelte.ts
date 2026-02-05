@@ -12,7 +12,10 @@ export interface WorklogEntry {
 	author: string;
 	started: string;
 	labels?: string[];
+	issueType?: string;
 	isNew?: boolean;
+	originalWorklogId?: string; // Links back to source worklog in X column
+	isMoved?: boolean; // If true, this worklog has been moved to a parent in Y column
 }
 
 export interface ParentTask {
@@ -231,27 +234,85 @@ function createMigrationStore() {
 		targetWorklogId?: string,
 		position: 'before' | 'after' = 'after'
 	) {
-		const selected = getSelectedWorklogs().map((w) => ({ ...w, isNew: true }));
+		const selected = getSelectedWorklogs().map((w) => ({
+			...w,
+			isNew: true,
+			originalWorklogId: w.id, // Link to original
+			id: `moved-${w.id}-${Date.now()}` // Generate new ID to avoid duplicates in keys
+		}));
 		addChildrenToParentAt(parentId, selected, targetWorklogId, position);
+
+		// Mark originals as moved instead of removing
+		state.jiraXWorklogs = state.jiraXWorklogs.map((w) => {
+			if (state.selectedWorklogIds.has(w.id)) {
+				return { ...w, isMoved: true };
+			}
+			return w;
+		});
+
 		state.selectedWorklogIds = new SvelteSet<string>();
 	}
 
+	function moveWorklogToParent(
+		parentId: string,
+		worklog: WorklogEntry,
+		targetWorklogId?: string,
+		position: 'before' | 'after' = 'after'
+	) {
+		// If it's already a "new" item (from Y), it's just a reorder within Y
+		if (worklog.isNew) {
+			addChildrenToParentAt(parentId, [worklog], targetWorklogId, position);
+			return;
+		}
+
+		// Otherwise it's a fresh move from X
+		const newWorklog = {
+			...worklog,
+			isNew: true,
+			originalWorklogId: worklog.id,
+			id: `moved-${worklog.id}-${Date.now()}`
+		};
+
+		addChildrenToParentAt(parentId, [newWorklog], targetWorklogId, position);
+
+		// Mark original as moved
+		const originalIndex = state.jiraXWorklogs.findIndex((w) => w.id === worklog.id);
+		if (originalIndex !== -1) {
+			state.jiraXWorklogs[originalIndex] = { ...state.jiraXWorklogs[originalIndex], isMoved: true };
+		}
+	}
+
 	function addChildToParent(parentId: string, worklog: WorklogEntry) {
-		addChildrenToParentAt(parentId, [{ ...worklog, isNew: true }]);
+		const newWorklog = {
+			...worklog,
+			isNew: true,
+			originalWorklogId: worklog.id,
+			id: `moved-${worklog.id}-${Date.now()}`
+		};
+
+		addChildrenToParentAt(parentId, [newWorklog]);
+
+		// Mark original as moved
+		const originalIndex = state.jiraXWorklogs.findIndex((w) => w.id === worklog.id);
+		if (originalIndex !== -1) {
+			state.jiraXWorklogs[originalIndex] = { ...state.jiraXWorklogs[originalIndex], isMoved: true };
+		}
 	}
 
 	function addChildrenToParentAt(
 		parentId: string,
-		worklogs: WorklogEntry[],
+		worklogs: WorklogEntry[], // These are ALREADY prepared new copies
 		targetWorklogId?: string,
 		position: 'before' | 'after' = 'after'
 	) {
 		const worklogIds = new Set(worklogs.map((w) => w.id));
 
-		// Remove from source (X column)
-		state.jiraXWorklogs = state.jiraXWorklogs.filter((w) => !worklogIds.has(w.id));
+		// DO NOT remove from source (X column) here anymore.
+		// That logic is moved to the caller (addChild/addSelected) to set 'isMoved' flag.
 
-		// Remove from any existing parent
+		// Remove from any existing parent IF they are already in a parent (moving between parents)
+		// But if they are fresh from X, their IDs are new, so this won't match anything.
+		// If we are moving within Y, we need to handle that.
 		for (const p of state.jiraYParents) {
 			p.children = p.children.filter((c) => !worklogIds.has(c.id));
 		}
@@ -283,8 +344,13 @@ function createMigrationStore() {
 			const worklog = parent.children.find((c) => c.id === worklogId);
 			if (worklog) {
 				parent.children = parent.children.filter((c) => c.id !== worklogId);
-				if (!state.jiraXWorklogs.find((w) => w.id === worklogId)) {
-					state.jiraXWorklogs = [...state.jiraXWorklogs, worklog];
+
+				// Unmark the original in X column
+				if (worklog.originalWorklogId) {
+					const xIdx = state.jiraXWorklogs.findIndex((w) => w.id === worklog.originalWorklogId);
+					if (xIdx !== -1) {
+						state.jiraXWorklogs[xIdx] = { ...state.jiraXWorklogs[xIdx], isMoved: false };
+					}
 				}
 			}
 		}
@@ -303,8 +369,12 @@ function createMigrationStore() {
 		const parent = state.jiraYParents.find((p) => p.id === parentId);
 		if (parent) {
 			for (const child of parent.children) {
-				if (!state.jiraXWorklogs.find((w) => w.id === child.id)) {
-					state.jiraXWorklogs = [...state.jiraXWorklogs, child];
+				// Unmark originals
+				if (child.originalWorklogId) {
+					const xIdx = state.jiraXWorklogs.findIndex((w) => w.id === child.originalWorklogId);
+					if (xIdx !== -1) {
+						state.jiraXWorklogs[xIdx] = { ...state.jiraXWorklogs[xIdx], isMoved: false };
+					}
 				}
 			}
 			state.jiraYParents = state.jiraYParents.filter((p) => p.id !== parentId);
@@ -389,10 +459,13 @@ function createMigrationStore() {
 			p.children = p.children.filter((c) => !worklogIds.has(c.id));
 		}
 
-		// Add back to source if not already there
+		// Unmark originals in X
 		for (const w of worklogs) {
-			if (!state.jiraXWorklogs.find((xw) => xw.id === w.id)) {
-				state.jiraXWorklogs = [...state.jiraXWorklogs, w];
+			if (w.originalWorklogId) {
+				const xIdx = state.jiraXWorklogs.findIndex((xw) => xw.id === w.originalWorklogId);
+				if (xIdx !== -1) {
+					state.jiraXWorklogs[xIdx] = { ...state.jiraXWorklogs[xIdx], isMoved: false };
+				}
 			}
 		}
 	}
@@ -400,8 +473,12 @@ function createMigrationStore() {
 	function clearAllChildren() {
 		for (const parent of state.jiraYParents) {
 			for (const child of parent.children) {
-				if (!state.jiraXWorklogs.find((w) => w.id === child.id)) {
-					state.jiraXWorklogs = [...state.jiraXWorklogs, child];
+				// Unmark originals
+				if (child.originalWorklogId) {
+					const xIdx = state.jiraXWorklogs.findIndex((w) => w.id === child.originalWorklogId);
+					if (xIdx !== -1) {
+						state.jiraXWorklogs[xIdx] = { ...state.jiraXWorklogs[xIdx], isMoved: false };
+					}
 				}
 			}
 			parent.children = [];
@@ -471,8 +548,12 @@ function createMigrationStore() {
 
 		// Group worklogs by target parent key
 		const ruleMatches = new SvelteMap<string, WorklogEntry[]>();
+		const movedLogIds = new Set<string>();
 
 		state.jiraXWorklogs.forEach((worklog) => {
+			// Skip if already moved (avoid double moving if button clicked multiple times, though usually it's good to re-eval)
+			if (worklog.isMoved) return;
+
 			for (const rule of activeProject.rules) {
 				if (!rule.sourceValue || !rule.targetTaskKey) continue;
 
@@ -485,11 +566,24 @@ function createMigrationStore() {
 					if (worklog.labels?.includes(rule.sourceValue)) {
 						matched = true;
 					}
+				} else if (rule.sourceType === 'type') {
+					if (worklog.issueType === rule.sourceValue) {
+						matched = true;
+					}
 				}
 
 				if (matched) {
 					const existing = ruleMatches.get(rule.targetTaskKey) || [];
-					ruleMatches.set(rule.targetTaskKey, [...existing, { ...worklog, isNew: true }]);
+					ruleMatches.set(rule.targetTaskKey, [
+						...existing,
+						{
+							...worklog,
+							isNew: true,
+							originalWorklogId: worklog.id,
+							id: `moved-${worklog.id}-${Date.now()}`
+						}
+					]);
+					movedLogIds.add(worklog.id);
 					break; // Stop at first matching rule
 				}
 			}
@@ -526,6 +620,16 @@ function createMigrationStore() {
 				addChildrenToParentAt(parent.id, worklogs);
 			}
 		});
+
+		// Update X column to mark moved items
+		if (movedLogIds.size > 0) {
+			state.jiraXWorklogs = state.jiraXWorklogs.map((w) => {
+				if (movedLogIds.has(w.id)) {
+					return { ...w, isMoved: true };
+				}
+				return w;
+			});
+		}
 	}
 
 	return {
@@ -572,7 +676,8 @@ function createMigrationStore() {
 		getSelectedTotalTime,
 		addSelectedToParent,
 		updateWorklog,
-		applyRules
+		applyRules,
+		moveWorklogToParent
 	};
 }
 

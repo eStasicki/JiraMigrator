@@ -37,7 +37,7 @@
 		// Don't auto-save on add since it's empty
 	}
 
-	function setSourceType(index: number, type: 'task' | 'label') {
+	function setSourceType(index: number, type: 'task' | 'label' | 'type') {
 		const newRules = [...(project.rules || [])];
 		if (!newRules[index]) return;
 
@@ -168,6 +168,17 @@
 								<Tag class="size-3" />
 								LABELKA
 							</button>
+							<button
+								type="button"
+								onclick={() => setSourceType(index, 'type')}
+								class="flex flex-1 items-center justify-center gap-1.5 rounded-md py-1 text-[10px] font-bold transition-all
+									{rule.sourceType === 'type'
+									? 'bg-blue-500 text-white shadow-sm'
+									: 'bg-slate-800 text-slate-500 hover:text-slate-300'}"
+							>
+								<Hash class="size-3" />
+								TYP
+							</button>
 						</div>
 
 						{#if rule.sourceType === 'task'}
@@ -187,7 +198,9 @@
 								<Hash class="absolute top-1/2 left-3 size-4 -translate-y-1/2 text-slate-500" />
 								<input
 									type="text"
-									placeholder="Wpisz nazwę labelki..."
+									placeholder={rule.sourceType === 'label'
+										? 'Wpisz nazwę labelki...'
+										: 'Wpisz typ zadania (np. Bug)...'}
 									value={rule.sourceValue}
 									disabled={!isJiraXConnected || isTestingX}
 									oninput={(e) =>

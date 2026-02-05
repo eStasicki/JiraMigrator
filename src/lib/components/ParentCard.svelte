@@ -193,6 +193,7 @@
 								draggable={true}
 								showCheckbox={false}
 								dropTargetParentId={parent.id}
+								onRemove={() => handleRemoveChild(child.id)}
 							/>
 						</div>
 					{/each}

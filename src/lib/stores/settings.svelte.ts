@@ -11,7 +11,7 @@ export interface JiraConfig {
 
 export interface MigrationRule {
 	id: string;
-	sourceType: 'task' | 'label';
+	sourceType: 'task' | 'label' | 'type';
 	sourceValue: string;
 	targetTaskKey: string;
 	targetTaskSummary?: string; // Optional: to display summary in the UI

@@ -13,6 +13,7 @@
 		onToggleSelect?: () => void;
 		ondragstart?: (e: DragEvent) => void;
 		ondragend?: (e: DragEvent) => void;
+		onRemove?: () => void;
 	}
 
 	let {
@@ -23,8 +24,13 @@
 		dropTargetParentId,
 		onToggleSelect,
 		ondragstart,
-		ondragend
+		ondragend,
+		onRemove
 	}: Props = $props();
+
+	// Derived
+	const isMoved = $derived(worklog.isMoved);
+	const canDrag = $derived(draggable && !isMoved);
 
 	let isDragging = $state(false);
 	let isEditing = $state(false);
@@ -112,9 +118,9 @@
 			if (dragType === 'multi' && migrationStore.getSelectedCount() > 0) {
 				migrationStore.addSelectedToParent(dropTargetParentId, worklog.id, position);
 			} else {
-				migrationStore.addChildrenToParentAt(
+				migrationStore.moveWorklogToParent(
 					dropTargetParentId,
-					[droppedWorklog],
+					droppedWorklog,
 					worklog.id,
 					position
 				);
@@ -204,7 +210,7 @@
 <!-- svelte-ignore a11y_click_events_have_key_events -->
 <!-- svelte-ignore a11y_no_static_element_interactions -->
 <div
-	{draggable}
+	draggable={canDrag}
 	ondragstart={handleDragStart}
 	ondragend={handleDragEnd}
 	ondragover={handleDragOver}
@@ -214,13 +220,17 @@
 	onclick={handleClick}
 	role="listitem"
 	class="group relative rounded-lg border p-4 transition-all duration-200
-		{draggable ? 'cursor-grab' : 'cursor-default'}
+		{canDrag ? 'cursor-grab' : 'cursor-default'}
 		{isDragging
 		? 'scale-[0.98] cursor-grabbing opacity-20 shadow-none ring-1 ring-slate-700'
-		: 'hover:shadow-lg'}
+		: isMoved
+			? 'border-dashed border-slate-800 bg-transparent opacity-30 shadow-none grayscale'
+			: 'hover:shadow-lg'}
 		{isSelected
 		? 'border-violet-500 bg-violet-500/10 ring-1 ring-violet-500/50'
-		: 'border-slate-700/50 bg-slate-800/60 hover:border-slate-600 hover:bg-slate-800'}"
+		: isMoved
+			? ''
+			: 'border-slate-700/50 bg-slate-800/60 hover:border-slate-600 hover:bg-slate-800'}"
 >
 	<!-- Drop Indicators -->
 	{#if dragOverSide === 'top'}
@@ -249,7 +259,7 @@
 		{/if}
 
 		<!-- Drag handle -->
-		{#if draggable && !isEditing}
+		{#if canDrag && !isEditing}
 			<div class="mt-0.5 text-slate-600 transition-colors group-hover:text-slate-400">
 				<GripVertical class="size-4" />
 			</div>
@@ -332,15 +342,34 @@
 							</div>
 						</div>
 
-						<button
-							onclick={startEdit}
-							class="rounded p-1 text-slate-500 opacity-0 transition-all group-hover:opacity-100 hover:bg-slate-700 hover:text-white"
-							title="Edytuj wpis"
-						>
-							<Edit2 class="size-3.5" />
-						</button>
+						<div class="flex items-center">
+							<button
+								onclick={startEdit}
+								class="rounded p-1 text-slate-500 opacity-0 transition-all group-hover:opacity-100 hover:bg-slate-700 hover:text-white"
+								title="Edytuj wpis"
+							>
+								<Edit2 class="size-3.5" />
+							</button>
+							{#if onRemove}
+								<button
+									onclick={(e) => {
+										e.stopPropagation();
+										onRemove();
+									}}
+									class="rounded p-1 text-slate-500 opacity-0 transition-all group-hover:opacity-100 hover:bg-red-500/10 hover:text-red-400"
+									title="Usuń (Wycofaj)"
+								>
+									<X class="size-3.5" />
+								</button>
+							{/if}
+						</div>
 					</div>
-					<h4 class="mt-1 truncate text-sm font-medium text-slate-200" title={worklog.issueSummary}>
+					<h4
+						class="mt-1 truncate text-sm font-medium {isMoved
+							? 'text-slate-500 line-through'
+							: 'text-slate-200'}"
+						title={worklog.issueSummary}
+					>
 						{worklog.issueSummary}
 					</h4>
 				</div>
