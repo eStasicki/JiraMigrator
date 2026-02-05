@@ -100,16 +100,31 @@ function createSettingsStore() {
 		saveToStorage();
 	}
 
+	// Helper to removing sensitive data before sending to cloud
+	function sanitizeSettingsForCloud(appSettings: AppSettings): AppSettings {
+		// Deep clone to avoid mutating state
+		const cleanSettings = JSON.parse(JSON.stringify(appSettings));
+
+		cleanSettings.projects = cleanSettings.projects.map((p: Project) => ({
+			...p,
+			jiraX: { ...p.jiraX, apiToken: '', tempoToken: '' },
+			jiraY: { ...p.jiraY, apiToken: '', tempoToken: '' }
+		}));
+
+		return cleanSettings;
+	}
+
 	async function saveToStorage() {
 		if (browser) {
+			// Save FULL settings (with tokens) to local storage
 			localStorage.setItem(STORAGE_KEY, JSON.stringify(settings));
 		}
 
 		// Sync with Supabase if logged in
 		if (authFacade.user) {
-			// Ensure we send a plain object, stripping any Svelte proxies
-			const plainSettings = JSON.parse(JSON.stringify(settings));
-			await authFacade.updateProfile({ settings: plainSettings });
+			// Send SANITIZED settings (without tokens) to cloud
+			const cloudSettings = sanitizeSettingsForCloud(settings);
+			await authFacade.updateProfile({ settings: cloudSettings });
 		}
 	}
 
@@ -196,11 +211,38 @@ function createSettingsStore() {
 		}
 	}
 
+	// Helper to preserve local secrets when applying cloud updates
+	function mergeSecrets(localSettings: AppSettings, cloudSettings: AppSettings): AppSettings {
+		const merged = JSON.parse(JSON.stringify(cloudSettings));
+
+		merged.projects = merged.projects.map((cloudProj: Project) => {
+			// Find corresponding local project to grab secrets from
+			const localProj = localSettings.projects.find((p) => p.id === cloudProj.id);
+
+			if (localProj) {
+				// Re-inject secrets if they are missing in cloud version (which they should be)
+				if (!cloudProj.jiraX.apiToken) cloudProj.jiraX.apiToken = localProj.jiraX.apiToken;
+				if (!cloudProj.jiraX.tempoToken) cloudProj.jiraX.tempoToken = localProj.jiraX.tempoToken;
+
+				if (!cloudProj.jiraY.apiToken) cloudProj.jiraY.apiToken = localProj.jiraY.apiToken;
+				if (!cloudProj.jiraY.tempoToken) cloudProj.jiraY.tempoToken = localProj.jiraY.tempoToken;
+			}
+			return cloudProj;
+		});
+
+		return merged;
+	}
+
 	// Sync from cloud (downstream) - updates local state only, does NOT push back to cloud
-	function syncFromCloud(newSettings: AppSettings) {
-		console.log('SettingsStore: Syncing from cloud (downstream update)', newSettings);
-		settings = newSettings;
-		// We still save to localStorage to persist the cloud state locally
+	function syncFromCloud(cloudSettings: AppSettings) {
+		console.log('SettingsStore: Syncing from cloud (downstream update)');
+
+		// If we have local settings, try to merge secrets to avoid wiping them
+		const mergedSettings = mergeSecrets(settings, cloudSettings);
+
+		settings = mergedSettings;
+
+		// We still save to localStorage to persist the cloud state locally (with secrets)
 		if (browser) {
 			localStorage.setItem(STORAGE_KEY, JSON.stringify(settings));
 		}
@@ -225,7 +267,8 @@ function createSettingsStore() {
 		setTimeFormat,
 		reset,
 		setSettings,
-		syncFromCloud
+		syncFromCloud,
+		sanitizeSettingsForCloud
 	};
 }
 

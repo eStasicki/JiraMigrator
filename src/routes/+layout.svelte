@@ -9,7 +9,10 @@
 	import { goto } from '$app/navigation';
 	import { Loader2 } from 'lucide-svelte';
 
-	let { children } = $props();
+	import { untrack } from 'svelte';
+	import type { Snippet } from 'svelte';
+
+	let { children }: { children: Snippet } = $props();
 
 	// Auth Guard
 	$effect(() => {
@@ -34,14 +37,18 @@
 			try {
 				const cloudSettings = authFacade.profile.settings as AppSettings;
 				if (cloudSettings.projects && Array.isArray(cloudSettings.projects)) {
-					// Prevent infinite loops by checking equality
-					const currentSettings = settingsStore.settings;
-					// Simple deep comparison (sufficient for settings object)
-					if (JSON.stringify(currentSettings) !== JSON.stringify(cloudSettings)) {
-						console.log('Syncing settings from cloud...');
-						// Use syncFromCloud to update local state without pushing back to cloud
-						settingsStore.syncFromCloud(cloudSettings);
-					}
+					// Use untrack to prevent this effect from re-running when we update the local settings store
+					// This breaks the infinite loop: Cloud Change -> Update Local -> Local Change -> Effect Re-run -> ...
+					untrack(() => {
+						const currentSettings = settingsStore.settings;
+						// Sanitize local settings (remove secrets) before comparing with cloud settings
+						const sanitizedCurrent = settingsStore.sanitizeSettingsForCloud(currentSettings);
+
+						if (JSON.stringify(sanitizedCurrent) !== JSON.stringify(cloudSettings)) {
+							console.log('Syncing settings from cloud...');
+							settingsStore.syncFromCloud(cloudSettings);
+						}
+					});
 				}
 			} catch (e) {
 				console.error('Failed to sync settings:', e);
