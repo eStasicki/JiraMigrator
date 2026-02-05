@@ -157,7 +157,7 @@ export async function fetchWorklogsFromJiraX(
 				apiToken,
 				endpoint: '/rest/api/3/search/jql',
 				method: 'POST',
-				body: { jql, fields: ['key', 'summary'], maxResults: 100 }
+				body: { jql, fields: ['key', 'summary', 'labels'], maxResults: 100 }
 			})
 		});
 		const data = await response.json();
@@ -186,6 +186,7 @@ export async function fetchWorklogsFromJiraX(
 						timeSpentSeconds: wl.timeSpentSeconds,
 						comment:
 							wl.comment?.content?.[0]?.content?.[0]?.text || wl.comment || issue.fields.summary,
+						labels: issue.fields.labels || [],
 						date: dateStr
 					});
 				}

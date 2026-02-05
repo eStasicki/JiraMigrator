@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { Plus, Trash2, ArrowRight, Settings2 } from 'lucide-svelte';
+	import { Plus, Trash2, ArrowRight, Settings2, Tag, Ticket, Hash } from 'lucide-svelte';
 	import type { Project, MigrationRule } from '$lib/stores/settings.svelte';
 	import TaskSelect from './TaskSelect.svelte';
 	import Button from './Button.svelte';
@@ -35,6 +35,15 @@
 		};
 		project.rules = [...(project.rules || []), newRule];
 		// Don't auto-save on add since it's empty
+	}
+
+	function setSourceType(index: number, type: 'task' | 'label') {
+		const newRules = [...(project.rules || [])];
+		if (!newRules[index]) return;
+
+		newRules[index] = { ...newRules[index], sourceType: type, sourceValue: '' };
+		project.rules = newRules;
+		// No onSave here as we reset the value to empty
 	}
 
 	function removeRule(id: string) {
@@ -135,18 +144,58 @@
 					class="group grid grid-cols-[1fr_40px_1fr_48px] items-center gap-4 rounded-xl border border-slate-700/50 bg-slate-900/40 p-3 transition-all hover:border-slate-600"
 				>
 					<!-- Column A: Source -->
-					<div>
-						<TaskSelect
-							config={project.jiraX}
-							value={rule.sourceValue}
-							disabled={!isJiraXConnected || isTestingX}
-							placeholder={isTestingX
-								? 'Sprawdzanie połączenia...'
-								: isJiraXConnected
-									? `Wybierz task z ${project.jiraX.name}`
-									: 'Najpierw przetestuj połączenie Jira X'}
-							onSelect={(key) => updateRuleKey(index, 'sourceValue', key)}
-						/>
+					<div class="space-y-2">
+						<div class="flex gap-1">
+							<button
+								type="button"
+								onclick={() => setSourceType(index, 'task')}
+								class="flex flex-1 items-center justify-center gap-1.5 rounded-md py-1 text-[10px] font-bold transition-all
+									{rule.sourceType === 'task'
+									? 'bg-violet-500 text-white shadow-sm'
+									: 'bg-slate-800 text-slate-500 hover:text-slate-300'}"
+							>
+								<Ticket class="size-3" />
+								TASK
+							</button>
+							<button
+								type="button"
+								onclick={() => setSourceType(index, 'label')}
+								class="flex flex-1 items-center justify-center gap-1.5 rounded-md py-1 text-[10px] font-bold transition-all
+									{rule.sourceType === 'label'
+									? 'bg-emerald-500 text-white shadow-sm'
+									: 'bg-slate-800 text-slate-500 hover:text-slate-300'}"
+							>
+								<Tag class="size-3" />
+								LABELKA
+							</button>
+						</div>
+
+						{#if rule.sourceType === 'task'}
+							<TaskSelect
+								config={project.jiraX}
+								value={rule.sourceValue}
+								disabled={!isJiraXConnected || isTestingX}
+								placeholder={isTestingX
+									? 'Sprawdzanie połączenia...'
+									: isJiraXConnected
+										? `Wybierz task z ${project.jiraX.name}`
+										: 'Najpierw przetestuj połączenie Jira X'}
+								onSelect={(key) => updateRuleKey(index, 'sourceValue', key)}
+							/>
+						{:else}
+							<div class="relative">
+								<Hash class="absolute top-1/2 left-3 size-4 -translate-y-1/2 text-slate-500" />
+								<input
+									type="text"
+									placeholder="Wpisz nazwę labelki..."
+									value={rule.sourceValue}
+									disabled={!isJiraXConnected || isTestingX}
+									oninput={(e) =>
+										updateRuleKey(index, 'sourceValue', (e.target as HTMLInputElement).value)}
+									class="w-full rounded-lg border border-slate-700 bg-slate-900/50 py-2 pr-4 pl-9 text-sm text-slate-200 placeholder-slate-500 transition-all focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20 focus:outline-none disabled:cursor-not-allowed disabled:opacity-50"
+								/>
+							</div>
+						{/if}
 					</div>
 
 					<!-- Column B: Arrow -->

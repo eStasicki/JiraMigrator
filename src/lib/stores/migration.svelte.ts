@@ -11,6 +11,7 @@ export interface WorklogEntry {
 	comment: string;
 	author: string;
 	started: string;
+	labels?: string[];
 	isNew?: boolean;
 }
 
@@ -429,6 +430,69 @@ function createMigrationStore() {
 		}
 	}
 
+	function applyRules() {
+		const activeProject = settingsStore.getActiveProject();
+		if (!activeProject || !activeProject.rules || activeProject.rules.length === 0) return;
+
+		// Group worklogs by target parent key
+		const ruleMatches = new Map<string, WorklogEntry[]>();
+
+		state.jiraXWorklogs.forEach((worklog) => {
+			for (const rule of activeProject.rules) {
+				if (!rule.sourceValue || !rule.targetTaskKey) continue;
+
+				let matched = false;
+				if (rule.sourceType === 'task') {
+					if (worklog.issueKey === rule.sourceValue) {
+						matched = true;
+					}
+				} else if (rule.sourceType === 'label') {
+					if (worklog.labels?.includes(rule.sourceValue)) {
+						matched = true;
+					}
+				}
+
+				if (matched) {
+					const existing = ruleMatches.get(rule.targetTaskKey) || [];
+					ruleMatches.set(rule.targetTaskKey, [...existing, { ...worklog, isNew: true }]);
+					break; // Stop at first matching rule
+				}
+			}
+		});
+
+		// Apply moves for found matches
+		ruleMatches.forEach((worklogs, targetKey) => {
+			let parent = state.jiraYParents.find((p) => p.issueKey === targetKey);
+
+			if (!parent) {
+				// Try to find summary from rules to create a placeholder parent
+				const ruleWithSummary = activeProject.rules.find(
+					(r) => r.targetTaskKey === targetKey && r.targetTaskSummary
+				);
+				const summary = ruleWithSummary?.targetTaskSummary || 'Zadanie docelowe (Auto)';
+
+				addParent({
+					id: targetKey, // Fallback to key as ID
+					issueKey: targetKey,
+					issueSummary: summary,
+					totalTimeSpentSeconds: 0,
+					totalTimeSpentFormatted: '0h',
+					type: 'Task',
+					status: 'Z reguły',
+					children: [],
+					isExpanded: true
+				});
+
+				// Re-find the newly added parent
+				parent = state.jiraYParents.find((p) => p.issueKey === targetKey);
+			}
+
+			if (parent) {
+				addChildrenToParentAt(parent.id, worklogs);
+			}
+		});
+	}
+
 	return {
 		get state() {
 			return state;
@@ -471,7 +535,8 @@ function createMigrationStore() {
 		getSelectedCount,
 		getSelectedTotalTime,
 		addSelectedToParent,
-		updateWorklog
+		updateWorklog,
+		applyRules
 	};
 }
 

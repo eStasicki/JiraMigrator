@@ -26,42 +26,38 @@
 		AlertCircle,
 		CheckSquare,
 		Square,
-		Settings
+		Settings,
+		Sparkles
 	} from 'lucide-svelte';
 
 	let migrationMessage = $state<{ type: 'success' | 'error'; text: string } | null>(null);
 	let showConfirmModal = $state(false);
 
-	// Load worklogs on mount and date change
-	async function loadJiraXWorklogs() {
+	async function loadAllData() {
 		if (!activeProject) return;
 		migrationStore.setLoadingX(true);
-		try {
-			const worklogs = await fetchWorklogsFromJiraX(
-				activeProject.jiraX.baseUrl,
-				activeProject.jiraX.email,
-				activeProject.jiraX.apiToken,
-				migrationStore.state.jiraXDate
-			);
-			migrationStore.setJiraXWorklogs(worklogs);
-		} finally {
-			migrationStore.setLoadingX(false);
-		}
-	}
-
-	async function loadJiraYParents() {
-		if (!activeProject) return;
 		migrationStore.setLoadingY(true);
 		try {
-			const parents = await fetchParentsFromJiraY(
-				activeProject.jiraY.baseUrl,
-				activeProject.jiraY.email,
-				activeProject.jiraY.apiToken,
-				migrationStore.state.jiraXDate,
-				activeProject.jiraY.tempoToken
-			);
+			const [worklogs, parents] = await Promise.all([
+				fetchWorklogsFromJiraX(
+					activeProject.jiraX.baseUrl,
+					activeProject.jiraX.email,
+					activeProject.jiraX.apiToken,
+					migrationStore.state.jiraXDate
+				),
+				fetchParentsFromJiraY(
+					activeProject.jiraY.baseUrl,
+					activeProject.jiraY.email,
+					activeProject.jiraY.apiToken,
+					migrationStore.state.jiraXDate,
+					activeProject.jiraY.tempoToken
+				)
+			]);
+			migrationStore.setJiraXWorklogs(worklogs);
 			migrationStore.setJiraYParents(parents);
+			migrationStore.applyRules();
 		} finally {
+			migrationStore.setLoadingX(false);
 			migrationStore.setLoadingY(false);
 		}
 	}
@@ -69,8 +65,7 @@
 	function handleJiraXDateChange(date: Date) {
 		migrationStore.setJiraXDate(date);
 		migrationStore.setJiraYMonth(date);
-		loadJiraXWorklogs();
-		loadJiraYParents();
+		loadAllData();
 	}
 
 	function openConfirmModal() {
@@ -87,7 +82,7 @@
 
 		try {
 			const summary = migrationStore.getMigrationSummary();
-			const migrations = summary.map((s) => ({
+			const migrations = summary.map((s: any) => ({
 				parentKey: s.parentKey,
 				children: s.children
 			}));
@@ -141,8 +136,8 @@
 
 	// Active project
 	const activeProject = $derived(settingsStore.getActiveProject());
-	const jiraXName = $derived(activeProject?.jiraX.name || 'Jira X');
-	const jiraYName = $derived(activeProject?.jiraY.name || 'Jira Y');
+	const jiraXName = $derived(activeProject?.jiraX?.name || 'Jira X');
+	const jiraYName = $derived(activeProject?.jiraY?.name || 'Jira Y');
 
 	// Track active project ID to reload data when it changes
 	let lastActiveProjectId = $state<string | null>(null);
@@ -154,16 +149,14 @@
 		if (lastActiveProjectId !== null && lastActiveProjectId !== currentProjectId) {
 			// Clear current data and reload
 			migrationStore.clearAllChildren();
-			loadJiraXWorklogs();
-			loadJiraYParents();
+			loadAllData();
 		}
 
 		lastActiveProjectId = currentProjectId;
 	});
 
 	onMount(() => {
-		loadJiraXWorklogs();
-		loadJiraYParents();
+		loadAllData();
 	});
 
 	let jiraXDragOver = $state(false);
@@ -316,6 +309,15 @@
 
 							<div class="flex items-center gap-2">
 								{#if migrationStore.state.jiraXWorklogs.length > 0}
+									<Button
+										variant="ghost"
+										size="sm"
+										onclick={() => migrationStore.applyRules()}
+										title="Zastosuj reguły automatyczne"
+										class="text-violet-400 hover:bg-violet-500/10"
+									>
+										<Sparkles class="size-4" />
+									</Button>
 									<div class="flex items-center gap-1.5 rounded-lg bg-slate-800 px-3 py-1.5">
 										<Clock class="size-4 text-violet-400" />
 										<span class="text-sm font-semibold text-white">
@@ -478,7 +480,9 @@
 
 					<!-- Migrate Button -->
 					{#if pendingMigration.count > 0}
-						<div class="border-t border-slate-700/50 p-4">
+						<div
+							class="sticky bottom-0 z-10 border-t border-slate-700/50 bg-slate-900/90 p-4 backdrop-blur-md"
+						>
 							<Button
 								variant="primary"
 								size="lg"
@@ -491,7 +495,7 @@
 									Migrowanie...
 								{:else}
 									<Send class="size-5" />
-									Migruj {pendingMigration.count} worklogów ({pendingMigration.time})
+									Migruj!
 								{/if}
 							</Button>
 						</div>
