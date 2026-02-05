@@ -2,6 +2,7 @@
 	import { ChevronDown, ChevronRight, Clock, Trash2, GripVertical } from 'lucide-svelte';
 	import type { ParentTask, WorklogEntry } from '$lib/stores/migration.svelte';
 	import { migrationStore } from '$lib/stores/migration.svelte';
+	import { flip } from 'svelte/animate';
 	import WorklogCard from './WorklogCard.svelte';
 
 	interface Props {
@@ -10,23 +11,35 @@
 
 	let { parent }: Props = $props();
 
-	let isDragOver = $state(false);
+	const isDragOver = $derived(migrationStore.state.dragOverParentId === parent.id);
+
+	function handleDragEnter(e: DragEvent) {
+		e.preventDefault();
+		migrationStore.setDragOverParent(parent.id);
+	}
 
 	function handleDragOver(e: DragEvent) {
 		e.preventDefault();
 		if (e.dataTransfer) {
 			e.dataTransfer.dropEffect = 'move';
 		}
-		isDragOver = true;
+		// In case dragenter was missed
+		if (!isDragOver) {
+			migrationStore.setDragOverParent(parent.id);
+		}
 	}
 
 	function handleDragLeave() {
-		isDragOver = false;
+		// We don't clear here because moving into a child (like WorklogCard)
+		// would clear it. Instead, the child (WorklogCard) or the Column
+		// will set it to something else or clear it.
+		// However, to be safe, we can clear if we are sure we left the whole card.
+		// But with global state, it's often better to let the next 'enter' or 'over' take over.
 	}
 
 	function handleDrop(e: DragEvent) {
 		e.preventDefault();
-		isDragOver = false;
+		migrationStore.clearAllDragOver();
 
 		const data = e.dataTransfer?.getData('application/json');
 		const dragType = e.dataTransfer?.getData('text/plain');
@@ -63,6 +76,7 @@
 </script>
 
 <div
+	ondragenter={handleDragEnter}
 	ondragover={handleDragOver}
 	ondragleave={handleDragLeave}
 	ondrop={handleDrop}
@@ -70,7 +84,7 @@
 	aria-label={parent.issueKey}
 	class="rounded-xl border transition-all duration-200
 		{isDragOver
-		? 'border-emerald-500 bg-emerald-500/10 ring-2 ring-emerald-500/30'
+		? 'z-30 -translate-y-1 border-emerald-500 bg-emerald-500/10 shadow-2xl ring-4 ring-emerald-500/20'
 		: 'border-slate-700/50 bg-slate-800/40 hover:border-slate-600'}"
 >
 	<!-- Parent Header -->
@@ -78,7 +92,7 @@
 		<button
 			type="button"
 			onclick={handleToggleExpand}
-			class="flex-shrink-0 rounded p-1 text-slate-400 transition-colors hover:bg-slate-700 hover:text-white"
+			class="shrink-0 rounded p-1 text-slate-400 transition-colors hover:bg-slate-700 hover:text-white"
 		>
 			{#if parent.isExpanded}
 				<ChevronDown class="size-5" />
@@ -146,14 +160,32 @@
 					class="flex items-center justify-center rounded-lg border-2 border-dashed py-6 transition-colors
 						{isDragOver ? 'border-emerald-500 bg-emerald-500/5' : 'border-slate-700 bg-slate-900/30'}"
 				>
-					<p class="text-sm text-slate-500">
-						{isDragOver ? '📥 Upuść tutaj' : 'Przeciągnij worklogi z Jira X'}
-					</p>
+					{#if isDragOver}
+						<span class="flex items-center gap-2 font-bold text-emerald-400">
+							📥 Upuść tutaj
+							{#if migrationStore.getSelectedCount() > 0}
+								<span
+									class="rounded-full bg-emerald-500/20 px-2.5 py-0.5 text-xs ring-1 ring-emerald-500/30"
+								>
+									{migrationStore.getSelectedCount()} elem.
+								</span>
+							{/if}
+						</span>
+					{:else}
+						<span class="text-slate-500">Przeciągnij worklogi z Jira X tutaj</span>
+					{/if}
 				</div>
 			{:else}
 				<div class="space-y-2">
 					{#each parent.children as child (child.id)}
-						<WorklogCard worklog={child} draggable={false} showCheckbox={false} />
+						<div animate:flip={{ duration: 300 }}>
+							<WorklogCard
+								worklog={child}
+								draggable={true}
+								showCheckbox={false}
+								dropTargetParentId={parent.id}
+							/>
+						</div>
 					{/each}
 				</div>
 			{/if}

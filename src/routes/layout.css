@@ -101,8 +101,18 @@ label,
 }
 
 /* Prevent text selection during drag */
-.dragging * {
-	user-select: none;
+.dragging-active * {
+	user-select: none !important;
+}
+
+/* Subtle pulse for all potential drop targets when dragging */
+.dragging-active [role='region'] {
+	transition: all 0.3s ease;
+}
+
+/* Dim the non-dragging elements slightly to focus on targets */
+.dragging-active .group:not(.opacity-20) {
+	/* opacity: 0.8; */
 }
 
 /* Focus states handled per-component */

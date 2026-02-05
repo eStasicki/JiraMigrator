@@ -1,6 +1,7 @@
 <script lang="ts">
 	import type { Snippet } from 'svelte';
 	import { Clock, Loader2 } from 'lucide-svelte';
+	import { migrationStore } from '$lib/stores/migration.svelte';
 
 	interface Props {
 		title: string;
@@ -30,6 +31,7 @@
 		headerActions
 	}: Props = $props();
 
+	let dragEnterCounter = 0;
 	let isDragOver = $state(false);
 
 	const accentClasses = {
@@ -53,34 +55,53 @@
 		}
 	};
 
+	function handleDragEnter(e: DragEvent) {
+		e.preventDefault();
+		dragEnterCounter++;
+		isDragOver = true;
+	}
+
 	function handleDragOver(e: DragEvent) {
 		e.preventDefault();
 		if (e.dataTransfer) {
 			e.dataTransfer.dropEffect = 'move';
 		}
+
+		// If hovering directly over the column background (not a card)
+		if (e.target === e.currentTarget) {
+			migrationStore.setDragOverParent(null);
+			migrationStore.setDragOverWorklog(null);
+		}
+
 		isDragOver = true;
 		ondragover?.(e);
 	}
 
 	function handleDragLeave(e: DragEvent) {
-		isDragOver = false;
+		dragEnterCounter--;
+		if (dragEnterCounter === 0) {
+			isDragOver = false;
+		}
 		ondragleave?.(e);
 	}
 
 	function handleDrop(e: DragEvent) {
 		e.preventDefault();
+		dragEnterCounter = 0;
 		isDragOver = false;
+		migrationStore.clearAllDragOver();
 		ondrop?.(e);
 	}
 </script>
 
 <div
+	ondragenter={handleDragEnter}
 	ondrop={handleDrop}
 	ondragover={handleDragOver}
 	ondragleave={handleDragLeave}
 	role="region"
 	aria-label={title}
-	class="flex h-full flex-col overflow-visible rounded-xl border bg-gradient-to-b to-slate-900/80 backdrop-blur-sm transition-all duration-200
+	class="flex h-full flex-col overflow-visible rounded-xl border bg-linear-to-b to-slate-900/80 backdrop-blur-sm transition-all duration-200
 		{accentClasses[accentColor].border}
 		{accentClasses[accentColor].bg}
 		{isDragOver ? 'scale-[1.02] ring-2 ring-violet-500/50' : ''}"

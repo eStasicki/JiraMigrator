@@ -165,6 +165,36 @@
 		loadJiraXWorklogs();
 		loadJiraYParents();
 	});
+
+	let jiraXDragOver = $state(false);
+
+	function handleJiraXDragOver(e: DragEvent) {
+		e.preventDefault();
+		jiraXDragOver = true;
+		migrationStore.clearAllDragOver(); // Cards highlights are not needed here
+		if (e.dataTransfer) {
+			e.dataTransfer.dropEffect = 'move';
+		}
+	}
+
+	function handleJiraXDrop(e: DragEvent) {
+		e.preventDefault();
+		jiraXDragOver = false;
+		migrationStore.clearAllDragOver();
+
+		const data = e.dataTransfer?.getData('application/json');
+		const dragType = e.dataTransfer?.getData('text/plain');
+
+		if (data) {
+			const droppedWorklog: WorklogEntry = JSON.parse(data);
+
+			if (dragType === 'multi' && migrationStore.getSelectedCount() > 0) {
+				migrationStore.moveWorklogsToSource(migrationStore.getSelectedWorklogs());
+			} else {
+				migrationStore.moveWorklogsToSource([droppedWorklog]);
+			}
+		}
+	}
 </script>
 
 <svelte:head>
@@ -298,7 +328,16 @@
 					</div>
 
 					<!-- Content -->
-					<div class="flex-1 overflow-y-auto p-4">
+					<div
+						class="flex-1 overflow-y-auto p-4 transition-colors {jiraXDragOver
+							? 'bg-violet-500/5'
+							: ''}"
+						ondragover={handleJiraXDragOver}
+						ondragleave={() => (jiraXDragOver = false)}
+						ondrop={handleJiraXDrop}
+						role="region"
+						aria-label="Lista źródłowa worklogów"
+					>
 						{#if migrationStore.state.isLoadingX}
 							<div class="flex h-32 items-center justify-center">
 								<Loader2 class="size-8 animate-spin text-slate-500" />

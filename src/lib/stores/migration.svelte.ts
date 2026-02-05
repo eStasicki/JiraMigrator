@@ -37,6 +37,9 @@ export interface MigrationState {
 	searchQuery: string;
 	searchResults: ParentTask[];
 	isSearching: boolean;
+	dragOverParentId: string | null;
+	dragOverWorklogId: string | null;
+	dragOverWorklogSide: 'top' | 'bottom' | null;
 }
 
 function parseFormattedTime(formatted: string): number {
@@ -69,8 +72,26 @@ function createMigrationStore() {
 		isAddParentModalOpen: false,
 		searchQuery: '',
 		searchResults: [],
-		isSearching: false
+		isSearching: false,
+		dragOverParentId: null,
+		dragOverWorklogId: null,
+		dragOverWorklogSide: null
 	});
+
+	function setDragOverParent(parentId: string | null) {
+		state.dragOverParentId = parentId;
+	}
+
+	function setDragOverWorklog(worklogId: string | null, side: 'top' | 'bottom' | null = null) {
+		state.dragOverWorklogId = worklogId;
+		state.dragOverWorklogSide = side;
+	}
+
+	function clearAllDragOver() {
+		state.dragOverParentId = null;
+		state.dragOverWorklogId = null;
+		state.dragOverWorklogSide = null;
+	}
 
 	function setJiraXDate(date: Date) {
 		state.jiraXDate = date;
@@ -144,25 +165,52 @@ function createMigrationStore() {
 		return formatSeconds(totalSeconds);
 	}
 
-	function addSelectedToParent(parentId: string) {
+	function addSelectedToParent(
+		parentId: string,
+		targetWorklogId?: string,
+		position: 'before' | 'after' = 'after'
+	) {
 		const selected = getSelectedWorklogs();
-		for (const worklog of selected) {
-			addChildToParent(parentId, worklog);
-		}
+		addChildrenToParentAt(parentId, selected, targetWorklogId, position);
 		state.selectedWorklogIds = new SvelteSet<string>();
 	}
 
 	function addChildToParent(parentId: string, worklog: WorklogEntry) {
-		state.jiraXWorklogs = state.jiraXWorklogs.filter((w) => w.id !== worklog.id);
+		addChildrenToParentAt(parentId, [worklog]);
+	}
 
-		for (const parent of state.jiraYParents) {
-			parent.children = parent.children.filter((c) => c.id !== worklog.id);
+	function addChildrenToParentAt(
+		parentId: string,
+		worklogs: WorklogEntry[],
+		targetWorklogId?: string,
+		position: 'before' | 'after' = 'after'
+	) {
+		const worklogIds = new Set(worklogs.map((w) => w.id));
+
+		// Remove from source (X column)
+		state.jiraXWorklogs = state.jiraXWorklogs.filter((w) => !worklogIds.has(w.id));
+
+		// Remove from any existing parent
+		for (const p of state.jiraYParents) {
+			p.children = p.children.filter((c) => !worklogIds.has(c.id));
 		}
 
 		const targetParent = state.jiraYParents.find((p) => p.id === parentId);
 		if (targetParent) {
-			if (!targetParent.children.find((c) => c.id === worklog.id)) {
-				targetParent.children = [...targetParent.children, worklog];
+			if (!targetWorklogId) {
+				// Append to end
+				targetParent.children = [...targetParent.children, ...worklogs];
+			} else {
+				// Insert at specific position
+				const index = targetParent.children.findIndex((c) => c.id === targetWorklogId);
+				if (index !== -1) {
+					const insertIndex = position === 'before' ? index : index + 1;
+					const newChildren = [...targetParent.children];
+					newChildren.splice(insertIndex, 0, ...worklogs);
+					targetParent.children = newChildren;
+				} else {
+					targetParent.children = [...targetParent.children, ...worklogs];
+				}
 			}
 			targetParent.isExpanded = true;
 		}
@@ -240,6 +288,22 @@ function createMigrationStore() {
 		return { count, time: formatSeconds(totalSeconds) };
 	}
 
+	function moveWorklogsToSource(worklogs: WorklogEntry[]) {
+		const worklogIds = new Set(worklogs.map((w) => w.id));
+
+		// Remove from all parents
+		for (const p of state.jiraYParents) {
+			p.children = p.children.filter((c) => !worklogIds.has(c.id));
+		}
+
+		// Add back to source if not already there
+		for (const w of worklogs) {
+			if (!state.jiraXWorklogs.find((xw) => xw.id === w.id)) {
+				state.jiraXWorklogs = [...state.jiraXWorklogs, w];
+			}
+		}
+	}
+
 	function clearAllChildren() {
 		for (const parent of state.jiraYParents) {
 			for (const child of parent.children) {
@@ -305,9 +369,14 @@ function createMigrationStore() {
 		setLoadingX,
 		setLoadingY,
 		setMigrating,
+		setDragOverParent,
+		setDragOverWorklog,
+		clearAllDragOver,
 		toggleParentExpanded,
 		addChildToParent,
+		addChildrenToParentAt,
 		removeChildFromParent,
+		moveWorklogsToSource,
 		addParent,
 		removeParent,
 		openAddParentModal,
