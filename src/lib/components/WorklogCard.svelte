@@ -2,6 +2,7 @@
 	import { GripVertical, Clock, MessageSquare, Check, Edit2, X } from 'lucide-svelte';
 	import type { WorklogEntry } from '$lib/stores/migration.svelte';
 	import { migrationStore } from '$lib/stores/migration.svelte';
+	import { settingsStore } from '$lib/stores/settings.svelte';
 
 	interface Props {
 		worklog: WorklogEntry;
@@ -175,6 +176,29 @@
 		if (e.key === 'Enter') saveEdit();
 		if (e.key === 'Escape') cancelEdit();
 	}
+
+	function handleTimeInput(e: Event) {
+		const input = e.target as HTMLInputElement;
+		let val = input.value;
+
+		// Auto-add space between digits/units: "1h15m" -> "1h 15m"
+		// Also handles "1h 15m" -> "1h 15m" (no change)
+		const newVal = val.replace(/(\d+[.,]?\d*h)(\d)/i, '$1 $2');
+
+		if (newVal !== val) {
+			// Save selection start to restore it later (prevent cursor jumping)
+			const start = input.selectionStart;
+			editTime = newVal;
+
+			// We need to wait for Svelte to update the DOM before restoring cursor
+			setTimeout(() => {
+				if (start !== null) {
+					// If we added a space, we move the cursor forward
+					input.setSelectionRange(start + 1, start + 1);
+				}
+			}, 0);
+		}
+	}
 </script>
 
 <!-- svelte-ignore a11y_click_events_have_key_events -->
@@ -261,8 +285,9 @@
 							type="text"
 							bind:value={editTime}
 							onkeydown={handleKeydown}
+							oninput={handleTimeInput}
 							class="w-full rounded border border-slate-600 bg-slate-900 px-2 py-1.5 text-sm text-white focus:border-violet-500 focus:ring-1 focus:ring-violet-500 focus:outline-none"
-							placeholder="1h 30m"
+							placeholder={settingsStore.settings.timeFormat === 'decimal' ? '1.5' : '1h 30m'}
 						/>
 					</div>
 					<div class="flex justify-end gap-2 pt-1">
@@ -290,6 +315,14 @@
 							>
 								{worklog.issueKey}
 							</span>
+
+							{#if worklog.isNew}
+								<span
+									class="rounded bg-emerald-500/20 px-1.5 py-0.5 text-[9px] font-bold tracking-tighter text-emerald-400 uppercase ring-1 ring-emerald-500/30"
+								>
+									Nowy
+								</span>
+							{/if}
 
 							<div
 								class="flex items-center gap-1 rounded-full bg-emerald-500/10 px-2 py-0.5 text-[10px] font-bold text-emerald-400 ring-1 ring-emerald-500/20"

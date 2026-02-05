@@ -182,7 +182,7 @@ export async function fetchWorklogsFromJiraX(
 						id: wl.id,
 						issueKey: issue.key,
 						issueSummary: issue.fields.summary,
-						timeSpentFormatted: formatSeconds(wl.timeSpentSeconds),
+						timeSpentFormatted: formatSeconds(wl.timeSpentSeconds), // Initial load always HM, store handles switch
 						timeSpentSeconds: wl.timeSpentSeconds,
 						comment:
 							wl.comment?.content?.[0]?.content?.[0]?.text || wl.comment || issue.fields.summary,

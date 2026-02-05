@@ -8,22 +8,33 @@ export interface JiraConfig {
 	tempoToken: string; // Token dla natywnego API Tempo Cloud (opcjonalny, ale zainicjowany jako pusty string)
 }
 
+export interface MigrationRule {
+	id: string;
+	sourceType: 'task' | 'label';
+	sourceValue: string;
+	targetTaskKey: string;
+	targetTaskSummary?: string; // Optional: to display summary in the UI
+}
+
 export interface Project {
 	id: string;
 	name: string;
 	jiraX: JiraConfig;
 	jiraY: JiraConfig;
+	rules: MigrationRule[];
 	createdAt: string;
 }
 
 export interface AppSettings {
 	projects: Project[];
 	activeProjectId: string | null;
+	timeFormat: 'hm' | 'decimal';
 }
 
 const defaultSettings: AppSettings = {
 	projects: [],
-	activeProjectId: null
+	activeProjectId: null,
+	timeFormat: 'hm'
 };
 
 const STORAGE_KEY = 'jira-migrator-settings-v2';
@@ -50,6 +61,7 @@ function createDefaultProject(name: string): Project {
 			apiToken: '',
 			tempoToken: ''
 		},
+		rules: [],
 		createdAt: new Date().toISOString()
 	};
 }
@@ -64,6 +76,14 @@ function createSettingsStore() {
 			try {
 				const parsed = JSON.parse(stored);
 				if (parsed.projects && Array.isArray(parsed.projects)) {
+					// Ensure all projects have rules array
+					parsed.projects = parsed.projects.map((p: Project) => {
+						const proj = { ...p };
+						if (!proj.rules) {
+							proj.rules = [];
+						}
+						return proj;
+					});
 					settings = parsed;
 				} else {
 					settings = defaultSettings;
@@ -103,9 +123,9 @@ function createSettingsStore() {
 	}
 
 	function updateProject(projectId: string, updates: Partial<Omit<Project, 'id' | 'createdAt'>>) {
-		const project = settings.projects.find((p) => p.id === projectId);
-		if (project) {
-			Object.assign(project, updates);
+		const index = settings.projects.findIndex((p) => p.id === projectId);
+		if (index !== -1) {
+			settings.projects[index] = { ...settings.projects[index], ...updates };
 			saveToStorage();
 		}
 	}
@@ -146,6 +166,11 @@ function createSettingsStore() {
 		}
 	}
 
+	function setTimeFormat(format: 'hm' | 'decimal') {
+		settings.timeFormat = format;
+		saveToStorage();
+	}
+
 	return {
 		get settings() {
 			return settings;
@@ -157,6 +182,7 @@ function createSettingsStore() {
 		getActiveProject,
 		isProjectConfigured,
 		isActiveProjectConfigured,
+		setTimeFormat,
 		reset
 	};
 }

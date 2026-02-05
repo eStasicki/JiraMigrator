@@ -9,6 +9,7 @@
 	import Button from '$lib/components/Button.svelte';
 	import Input from '$lib/components/Input.svelte';
 	import Card from '$lib/components/Card.svelte';
+	import RulesSection from '$lib/components/RulesSection.svelte';
 	import ConfirmModal from '$lib/components/ConfirmModal.svelte';
 	import {
 		Save,
@@ -60,13 +61,25 @@
 		// Ensure tempoToken exists to avoid binding errors (string | undefined)
 		if (clone.jiraX && !clone.jiraX.tempoToken) clone.jiraX.tempoToken = '';
 		if (clone.jiraY && !clone.jiraY.tempoToken) clone.jiraY.tempoToken = '';
+		if (!clone.rules) clone.rules = [];
 
 		editingProject = clone;
 		// Reset connection test state
 		connectionTestResultX = null;
 		connectionTestResultY = null;
 		connectionTestResultTempoY = null;
+		lastTestedProjectId = project.id;
+
+		// Trigger auto-tests if configured
+		if (clone.jiraX.baseUrl && clone.jiraX.email && clone.jiraX.apiToken) {
+			handleTestConnectionX();
+		}
+		if (clone.jiraY.baseUrl && clone.jiraY.email && clone.jiraY.apiToken) {
+			handleTestConnectionY();
+		}
 	}
+
+	let lastTestedProjectId = $state<string | null>(null);
 
 	function cancelEditing() {
 		editingProjectId = null;
@@ -132,13 +145,13 @@
 			settingsStore.updateProject(editingProjectId, {
 				name: editingProject.name,
 				jiraX: { ...editingProject.jiraX },
-				jiraY: { ...editingProject.jiraY }
+				jiraY: { ...editingProject.jiraY },
+				rules: [...(editingProject.rules || [])]
 			});
 			showSavedMessage = true;
 			setTimeout(() => {
 				showSavedMessage = false;
 			}, 3000);
-			cancelEditing();
 		}
 	}
 
@@ -199,9 +212,11 @@
 		if (!editingProject) return false;
 		return !!(
 			editingProject.name &&
+			editingProject.jiraX.name &&
 			editingProject.jiraX.baseUrl &&
 			editingProject.jiraX.email &&
 			editingProject.jiraX.apiToken &&
+			editingProject.jiraY.name &&
 			editingProject.jiraY.baseUrl &&
 			editingProject.jiraY.email &&
 			editingProject.jiraY.apiToken
@@ -230,6 +245,41 @@
 			<p class="mt-2 text-slate-400">
 				Zarządzaj projektami i połączeniami między instancjami Jira.
 			</p>
+		</div>
+
+		<!-- Preferences -->
+		<div class="mb-8 rounded-xl border border-slate-700/50 bg-slate-800/30 p-6">
+			<h2 class="mb-4 text-lg font-semibold text-white">Preferencje wyświetlania</h2>
+			<div class="flex items-center justify-between gap-4">
+				<div>
+					<h3 class="font-medium text-slate-200">Format czasu</h3>
+					<p class="text-sm text-slate-500">
+						Wybierz jak chcesz widzieć i wpisywać czas pracy (np. 1h 30m vs 1.5)
+					</p>
+				</div>
+				<div class="flex rounded-lg bg-slate-900/50 p-1 ring-1 ring-slate-700/50">
+					<button
+						type="button"
+						onclick={() => settingsStore.setTimeFormat('hm')}
+						class="rounded-md px-4 py-1.5 text-xs font-bold transition-all
+							{settingsStore.settings.timeFormat === 'hm'
+							? 'bg-violet-500 text-white shadow-lg'
+							: 'text-slate-500 hover:text-slate-300'}"
+					>
+						Standard (h/m)
+					</button>
+					<button
+						type="button"
+						onclick={() => settingsStore.setTimeFormat('decimal')}
+						class="rounded-md px-4 py-1.5 text-xs font-bold transition-all
+							{settingsStore.settings.timeFormat === 'decimal'
+							? 'bg-violet-500 text-white shadow-lg'
+							: 'text-slate-500 hover:text-slate-300'}"
+					>
+						Dziesiętny (0.5)
+					</button>
+				</div>
+			</div>
 		</div>
 
 		<!-- Security Notice -->
@@ -390,10 +440,16 @@
 									<input
 										type="text"
 										bind:value={editingProject.name}
-										class="border-none bg-transparent text-xl font-bold text-white focus:outline-none"
+										class="border-none bg-transparent text-xl font-bold text-white focus:outline-none {!editingProject.name
+											? 'placeholder:text-rose-500/50'
+											: ''}"
 										placeholder="Nazwa projektu"
 									/>
-									<p class="text-sm text-slate-500">Edycja ustawień projektu</p>
+									{#if !editingProject.name}
+										<p class="text-xs font-medium text-rose-500">To pole jest wymagane</p>
+									{:else}
+										<p class="text-sm text-slate-500">Edycja ustawień projektu</p>
+									{/if}
 								</div>
 							</div>
 							<Button
@@ -417,6 +473,7 @@
 										bind:value={editingProject.jiraX.name}
 										placeholder="np. Jira Produkcyjna"
 										required
+										error={!editingProject.jiraX.name ? 'To pole jest wymagane' : ''}
 									/>
 									<Input
 										id="jiraX-url"
@@ -425,6 +482,7 @@
 										bind:value={editingProject.jiraX.baseUrl}
 										placeholder="https://twoja-firma.atlassian.net"
 										required
+										error={!editingProject.jiraX.baseUrl ? 'To pole jest wymagane' : ''}
 									/>
 									<Input
 										id="jiraX-email"
@@ -433,6 +491,7 @@
 										bind:value={editingProject.jiraX.email}
 										placeholder="twoj.email@firma.com"
 										required
+										error={!editingProject.jiraX.email ? 'To pole jest wymagane' : ''}
 									/>
 									<Input
 										id="jiraX-token"
@@ -441,6 +500,7 @@
 										bind:value={editingProject.jiraX.apiToken}
 										placeholder="Twój API token z Atlassian"
 										required
+										error={!editingProject.jiraX.apiToken ? 'To pole jest wymagane' : ''}
 									/>
 
 									<!-- Test Connection Button -->
@@ -499,6 +559,7 @@
 										bind:value={editingProject.jiraY.name}
 										placeholder="np. Jira Klienta"
 										required
+										error={!editingProject.jiraY.name ? 'To pole jest wymagane' : ''}
 									/>
 									<Input
 										id="jiraY-url"
@@ -507,6 +568,7 @@
 										bind:value={editingProject.jiraY.baseUrl}
 										placeholder="https://klient.atlassian.net"
 										required
+										error={!editingProject.jiraY.baseUrl ? 'To pole jest wymagane' : ''}
 									/>
 									<Input
 										id="jiraY-email"
@@ -515,6 +577,7 @@
 										bind:value={editingProject.jiraY.email}
 										placeholder="twoj.email@klient.com"
 										required
+										error={!editingProject.jiraY.email ? 'To pole jest wymagane' : ''}
 									/>
 									<Input
 										id="jiraY-token"
@@ -523,6 +586,7 @@
 										bind:value={editingProject.jiraY.apiToken}
 										placeholder="Twój API token z Atlassian"
 										required
+										error={!editingProject.jiraY.apiToken ? 'To pole jest wymagane' : ''}
 									/>
 									<Input
 										id="jiraY-tempo-token"
@@ -641,8 +705,23 @@
 							</div>
 						</div>
 
-						<!-- Actions -->
+						<!-- Migration Rules -->
+						<RulesSection
+							project={editingProject}
+							isJiraXConnected={!!connectionTestResultX?.success}
+							isJiraYConnected={!!connectionTestResultY?.success}
+							isTestingX={testingConnectionX}
+							isTestingY={testingConnectionY}
+							onSave={handleSaveProject}
+						/>
+
 						<div class="mt-6 flex items-center justify-end gap-3 border-t border-slate-700/50 pt-6">
+							{#if showSavedMessage}
+								<div class="flex items-center gap-2 pr-4 text-sm font-medium text-emerald-400">
+									<CheckCircle class="size-4" />
+									<span>Zapisano</span>
+								</div>
+							{/if}
 							<Button variant="secondary" onclick={cancelEditing}>Anuluj</Button>
 							<Button
 								variant="primary"

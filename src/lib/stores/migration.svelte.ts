@@ -1,5 +1,6 @@
 import { SvelteSet } from 'svelte/reactivity';
-import { formatSeconds } from '$lib/utils';
+import { formatTime } from '$lib/utils';
+import { settingsStore } from './settings.svelte';
 
 export interface WorklogEntry {
 	id: string;
@@ -10,6 +11,7 @@ export interface WorklogEntry {
 	comment: string;
 	author: string;
 	started: string;
+	isNew?: boolean;
 }
 
 export interface ParentTask {
@@ -22,6 +24,7 @@ export interface ParentTask {
 	status: string;
 	children: WorklogEntry[];
 	isExpanded: boolean;
+	initialTotalTimeSeconds?: number;
 }
 
 export interface MigrationState {
@@ -43,15 +46,37 @@ export interface MigrationState {
 }
 
 function parseFormattedTime(formatted: string): number {
+	if (!formatted) return 0;
+	const clean = formatted.trim().toLowerCase();
 	let totalSeconds = 0;
-	const hMatch = formatted.match(/(\d+)h/);
-	const mMatch = formatted.match(/(\d+)m/);
 
-	if (hMatch) totalSeconds += parseInt(hMatch[1]) * 3600;
-	if (mMatch) totalSeconds += parseInt(mMatch[1]) * 60;
+	// 1. Try to find hours (supports "1h", "1.5h", "1,5 h")
+	const hMatch = clean.match(/(\d+([.,]\d+)?)\s*h/);
+	if (hMatch) {
+		const hVal = hMatch[1].replace(',', '.');
+		totalSeconds += Math.round(parseFloat(hVal) * 3600);
+	}
 
-	if (!hMatch && !mMatch && /^\d+$/.test(formatted)) {
-		totalSeconds = parseInt(formatted) * 60;
+	// 2. Try to find minutes (supports "15m", "15 m")
+	const mMatch = clean.match(/(\d+([.,]\d+)?)\s*m/);
+	if (mMatch) {
+		const mVal = mMatch[1].replace(',', '.');
+		totalSeconds += Math.round(parseFloat(mVal) * 60);
+	}
+
+	// 3. Fallback: handle pure numbers
+	if (!hMatch && !mMatch) {
+		// Pure decimal or integer without unit
+		if (/^(\d+([.,]\d+)?)$/.test(clean)) {
+			const val = clean.replace(',', '.');
+			// If it's a small decimal (like 0.5) or contains a separator, treat as hours
+			// If it's a large integer (like 30), treat as minutes
+			if (val.includes('.') || parseFloat(val) < 8) {
+				totalSeconds = Math.round(parseFloat(val) * 3600);
+			} else {
+				totalSeconds = parseInt(val) * 60;
+			}
+		}
 	}
 
 	return totalSeconds;
@@ -107,7 +132,13 @@ function createMigrationStore() {
 	}
 
 	function setJiraYParents(parents: ParentTask[]) {
-		state.jiraYParents = parents;
+		state.jiraYParents = parents.map((p) => {
+			const totalSeconds = p.children.reduce((sum, c) => sum + (c.timeSpentSeconds || 0), 0);
+			return {
+				...p,
+				initialTotalTimeSeconds: totalSeconds
+			};
+		});
 	}
 
 	function setLoadingX(loading: boolean) {
@@ -162,7 +193,7 @@ function createMigrationStore() {
 	function getSelectedTotalTime(): string {
 		const selected = getSelectedWorklogs();
 		const totalSeconds = selected.reduce((sum, w) => sum + w.timeSpentSeconds, 0);
-		return formatSeconds(totalSeconds);
+		return formatTime(totalSeconds, settingsStore.settings.timeFormat);
 	}
 
 	function addSelectedToParent(
@@ -170,13 +201,13 @@ function createMigrationStore() {
 		targetWorklogId?: string,
 		position: 'before' | 'after' = 'after'
 	) {
-		const selected = getSelectedWorklogs();
+		const selected = getSelectedWorklogs().map((w) => ({ ...w, isNew: true }));
 		addChildrenToParentAt(parentId, selected, targetWorklogId, position);
 		state.selectedWorklogIds = new SvelteSet<string>();
 	}
 
 	function addChildToParent(parentId: string, worklog: WorklogEntry) {
-		addChildrenToParentAt(parentId, [worklog]);
+		addChildrenToParentAt(parentId, [{ ...worklog, isNew: true }]);
 	}
 
 	function addChildrenToParentAt(
@@ -231,7 +262,10 @@ function createMigrationStore() {
 
 	function addParent(parent: ParentTask) {
 		if (!state.jiraYParents.find((p) => p.id === parent.id)) {
-			state.jiraYParents = [...state.jiraYParents, { ...parent, children: [], isExpanded: true }];
+			state.jiraYParents = [
+				...state.jiraYParents,
+				{ ...parent, children: [], isExpanded: true, initialTotalTimeSeconds: 0 }
+			];
 		}
 	}
 
@@ -271,21 +305,50 @@ function createMigrationStore() {
 		state.isSearching = searching;
 	}
 
+	function getInitialTime(parentId: string): string {
+		const parent = state.jiraYParents.find((p) => p.id === parentId);
+		if (!parent) return settingsStore.settings.timeFormat === 'decimal' ? '0' : '0m';
+		return formatTime(parent.initialTotalTimeSeconds || 0, settingsStore.settings.timeFormat);
+	}
+
+	function getOriginalTime(parentId: string): string {
+		const parent = state.jiraYParents.find((p) => p.id === parentId);
+		if (!parent) return settingsStore.settings.timeFormat === 'decimal' ? '0' : '0m';
+		const totalSeconds = parent.children
+			.filter((c) => !c.isNew)
+			.reduce((sum, c) => sum + c.timeSpentSeconds, 0);
+		return formatTime(totalSeconds, settingsStore.settings.timeFormat);
+	}
+
+	function getAddedTime(parentId: string): string {
+		return getTotalChildrenTime(parentId);
+	}
+
+	function getTotalTime(parentId: string): string {
+		const parent = state.jiraYParents.find((p) => p.id === parentId);
+		if (!parent) return settingsStore.settings.timeFormat === 'decimal' ? '0' : '0m';
+		const totalSeconds = parent.children.reduce((sum, c) => sum + c.timeSpentSeconds, 0);
+		return formatTime(totalSeconds, settingsStore.settings.timeFormat);
+	}
+
 	function getTotalChildrenTime(parentId: string): string {
 		const parent = state.jiraYParents.find((p) => p.id === parentId);
-		if (!parent) return '0m';
-		const totalSeconds = parent.children.reduce((sum, c) => sum + c.timeSpentSeconds, 0);
-		return formatSeconds(totalSeconds);
+		if (!parent) return settingsStore.settings.timeFormat === 'decimal' ? '0' : '0m';
+		const totalSeconds = parent.children
+			.filter((c) => c.isNew)
+			.reduce((sum, c) => sum + c.timeSpentSeconds, 0);
+		return formatTime(totalSeconds, settingsStore.settings.timeFormat);
 	}
 
 	function getTotalPendingMigration(): { count: number; time: string } {
 		let totalSeconds = 0;
 		let count = 0;
 		for (const parent of state.jiraYParents) {
-			count += parent.children.length;
-			totalSeconds += parent.children.reduce((sum, c) => sum + c.timeSpentSeconds, 0);
+			const newChildren = parent.children.filter((c) => c.isNew);
+			count += newChildren.length;
+			totalSeconds += newChildren.reduce((sum, c) => sum + c.timeSpentSeconds, 0);
 		}
-		return { count, time: formatSeconds(totalSeconds) };
+		return { count, time: formatTime(totalSeconds, settingsStore.settings.timeFormat) };
 	}
 
 	function moveWorklogsToSource(worklogs: WorklogEntry[]) {
@@ -322,13 +385,19 @@ function createMigrationStore() {
 		totalTime: string;
 	}[] {
 		return state.jiraYParents
-			.filter((p) => p.children.length > 0)
-			.map((p) => ({
-				parentKey: p.issueKey,
-				parentSummary: p.issueSummary,
-				children: p.children,
-				totalTime: formatSeconds(p.children.reduce((sum, c) => sum + c.timeSpentSeconds, 0))
-			}));
+			.filter((p) => p.children.some((c) => c.isNew))
+			.map((p) => {
+				const newChildren = p.children.filter((c) => c.isNew);
+				return {
+					parentKey: p.issueKey,
+					parentSummary: p.issueSummary,
+					children: newChildren,
+					totalTime: formatTime(
+						newChildren.reduce((sum, c) => sum + c.timeSpentSeconds, 0),
+						settingsStore.settings.timeFormat
+					)
+				};
+			});
 	}
 
 	function updateWorklog(id: string, updates: { comment?: string; timeSpentFormatted?: string }) {
@@ -337,8 +406,9 @@ function createMigrationStore() {
 			const w = state.jiraXWorklogs[xIdx];
 			if (updates.comment !== undefined) w.comment = updates.comment;
 			if (updates.timeSpentFormatted !== undefined) {
-				w.timeSpentFormatted = updates.timeSpentFormatted;
-				w.timeSpentSeconds = parseFormattedTime(updates.timeSpentFormatted);
+				const seconds = parseFormattedTime(updates.timeSpentFormatted);
+				w.timeSpentSeconds = seconds;
+				w.timeSpentFormatted = formatTime(seconds, settingsStore.settings.timeFormat);
 			}
 		}
 
@@ -351,8 +421,9 @@ function createMigrationStore() {
 					c.issueSummary = updates.comment;
 				}
 				if (updates.timeSpentFormatted !== undefined) {
-					c.timeSpentFormatted = updates.timeSpentFormatted;
-					c.timeSpentSeconds = parseFormattedTime(updates.timeSpentFormatted);
+					const seconds = parseFormattedTime(updates.timeSpentFormatted);
+					c.timeSpentSeconds = seconds;
+					c.timeSpentFormatted = formatTime(seconds, settingsStore.settings.timeFormat);
 				}
 			}
 		}
@@ -384,6 +455,10 @@ function createMigrationStore() {
 		setSearchQuery,
 		setSearchResults,
 		setIsSearching,
+		getInitialTime,
+		getOriginalTime,
+		getAddedTime,
+		getTotalTime,
 		getTotalChildrenTime,
 		getTotalPendingMigration,
 		clearAllChildren,

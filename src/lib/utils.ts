@@ -7,12 +7,36 @@ export function cn(...inputs: ClassValue[]) {
 
 export function formatSeconds(seconds: number): string {
 	if (!seconds || seconds <= 0) return '0h';
+
+	// If it's a "clean" decimal (like 0.5, 1.25, etc. - multiples of 15 mins)
+	// we could potentially show it as decimal, but Jira standard is often h/m.
+	// However, the user wants decimal support.
+
 	const h = Math.floor(seconds / 3600);
 	const m = Math.floor((seconds % 3600) / 60);
+
+	// If it's exactly a half-hour or quarter-hour, some might prefer 0.5h
+	// but let's stick to a robust h/m by default and ensure parsing supports both.
+
 	let result = '';
 	if (h > 0) result += `${h}h `;
 	if (m > 0) result += `${m}m`;
 	return result.trim() || '0m';
+}
+
+export function formatSecondsDecimal(seconds: number): string {
+	if (!seconds || seconds <= 0) return '0';
+	const hours = seconds / 3600;
+	// Round to 2 decimal places and remove trailing zeros, use dot as decimal separator
+	return Number(hours.toFixed(2)).toString();
+}
+
+export function formatTime(seconds: number, format: 'hm' | 'decimal' = 'hm'): string {
+	if (!seconds || seconds <= 0) return format === 'decimal' ? '0' : '0h';
+	if (format === 'decimal') {
+		return formatSecondsDecimal(seconds);
+	}
+	return formatSeconds(seconds);
 }
 
 export function getLocalDateString(date: Date): string {

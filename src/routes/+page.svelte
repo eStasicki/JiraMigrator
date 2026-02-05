@@ -470,7 +470,7 @@
 									class="flex w-full items-center justify-center gap-2 rounded-xl border-2 border-dashed border-slate-700 py-4 text-slate-400 transition-all hover:border-emerald-500/50 hover:bg-emerald-500/5 hover:text-emerald-400"
 								>
 									<Plus class="size-5" />
-									<span class="font-medium">Dodaj rodzica z Jira Y</span>
+									<span class="font-medium">Dodaj rodzica z Jira {jiraYName}</span>
 								</button>
 							</div>
 						{/if}

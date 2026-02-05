@@ -108,11 +108,11 @@
 				>
 					{parent.issueKey}
 				</span>
-				{#if parent.children.length > 0}
+				{#if parent.children.some((c) => c.isNew)}
 					<span
 						class="rounded-full bg-violet-500/20 px-2 py-0.5 text-xs font-medium text-violet-400"
 					>
-						+{parent.children.length}
+						+{parent.children.filter((c) => c.isNew).length}
 					</span>
 				{/if}
 			</div>
@@ -121,25 +121,34 @@
 			</p>
 		</div>
 
-		<div class="flex items-center gap-2">
-			<!-- Existing time in Y -->
+		<div class="flex items-center gap-3">
+			<!-- Time Dashboard -->
 			<div
-				class="flex items-center gap-1.5 rounded-lg bg-slate-700/50 px-2 py-1 text-xs text-slate-400"
-				title="Czas już zalogowany w Jira Y"
+				class="flex items-center gap-2 rounded-xl bg-slate-900/60 p-1.5 shadow-inner ring-1 ring-white/5"
 			>
-				<Clock class="size-3.5" />
-				<span>{parent.totalTimeSpentFormatted}</span>
-			</div>
-
-			<!-- New time from children -->
-			{#if parent.children.length > 0}
-				<div
-					class="flex items-center gap-1.5 rounded-lg bg-emerald-500/20 px-2 py-1 text-xs font-semibold text-emerald-400"
-					title="Nowy czas do zmigrowania"
-				>
-					<span>+{getChildrenTotalTime()}</span>
+				<div class="flex min-w-[70px] flex-col gap-0 px-2">
+					<div class="flex items-center justify-between gap-2 leading-none">
+						<span class="text-[9px] font-bold tracking-tight text-slate-500 uppercase"
+							>Początek</span
+						>
+						<span class="font-mono text-[10px] font-bold text-slate-400"
+							>{migrationStore.getInitialTime(parent.id)}</span
+						>
+					</div>
 				</div>
-			{/if}
+
+				<div class="h-7 w-px bg-slate-700/50"></div>
+
+				<div class="flex flex-col items-center px-2">
+					<span class="mb-0.5 text-[8px] font-black tracking-[0.2em] text-slate-500 uppercase"
+						>Łącznie</span
+					>
+					<div class="flex items-center gap-1.5 text-sm font-black text-white tabular-nums">
+						<Clock class="size-3.5 text-violet-400" />
+						<span>{migrationStore.getTotalTime(parent.id)}</span>
+					</div>
+				</div>
+			</div>
 
 			<button
 				type="button"
