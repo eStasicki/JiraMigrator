@@ -33,38 +33,54 @@
 	let migrationMessage = $state<{ type: 'success' | 'error'; text: string } | null>(null);
 	let showConfirmModal = $state(false);
 
-	async function loadAllData() {
+	async function loadJiraX() {
 		if (!activeProject) return;
 		migrationStore.setLoadingX(true);
-		migrationStore.setLoadingY(true);
 		try {
-			const [worklogs, parents] = await Promise.all([
-				fetchWorklogsFromJiraX(
-					activeProject.jiraX.baseUrl,
-					activeProject.jiraX.email,
-					activeProject.jiraX.apiToken,
-					migrationStore.state.jiraXDate
-				),
-				fetchParentsFromJiraY(
-					activeProject.jiraY.baseUrl,
-					activeProject.jiraY.email,
-					activeProject.jiraY.apiToken,
-					migrationStore.state.jiraXDate,
-					activeProject.jiraY.tempoToken
-				)
-			]);
+			const worklogs = await fetchWorklogsFromJiraX(
+				activeProject.jiraX.baseUrl,
+				activeProject.jiraX.email,
+				activeProject.jiraX.apiToken,
+				migrationStore.state.jiraXDate
+			);
 			migrationStore.setJiraXWorklogs(worklogs);
-			migrationStore.setJiraYParents(parents);
 			migrationStore.applyRules();
+		} catch (error) {
+			console.error('Error loading Jira X:', error);
 		} finally {
 			migrationStore.setLoadingX(false);
+		}
+	}
+
+	async function loadJiraY() {
+		if (!activeProject) return;
+		migrationStore.setLoadingY(true);
+		try {
+			const parents = await fetchParentsFromJiraY(
+				activeProject.jiraY.baseUrl,
+				activeProject.jiraY.email,
+				activeProject.jiraY.apiToken,
+				migrationStore.state.jiraXDate,
+				activeProject.jiraY.tempoToken
+			);
+			migrationStore.setJiraYParents(parents);
+			migrationStore.applyRules();
+		} catch (error) {
+			console.error('Error loading Jira Y:', error);
+		} finally {
 			migrationStore.setLoadingY(false);
 		}
+	}
+
+	function loadAllData() {
+		loadJiraX();
+		loadJiraY();
 	}
 
 	function handleJiraXDateChange(date: Date) {
 		migrationStore.setJiraXDate(date);
 		migrationStore.setJiraYMonth(date);
+		migrationStore.clearAllData();
 		loadAllData();
 	}
 
@@ -148,7 +164,7 @@
 		// If project changed (not just on initial mount)
 		if (lastActiveProjectId !== null && lastActiveProjectId !== currentProjectId) {
 			// Clear current data and reload
-			migrationStore.clearAllChildren();
+			migrationStore.clearAllData();
 			loadAllData();
 		}
 

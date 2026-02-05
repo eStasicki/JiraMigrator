@@ -53,6 +53,13 @@
 	// Get projects from store
 	const projects = $derived(settingsStore.settings.projects);
 
+	// Auto-select if only one project exists
+	$effect(() => {
+		if (projects.length === 1 && !editingProjectId && !showNewProjectForm) {
+			startEditingProject(projects[0]);
+		}
+	});
+
 	function startEditingProject(project: Project) {
 		editingProjectId = project.id;
 		// Deep clone for editing
@@ -739,7 +746,9 @@
 									<span>Zapisano</span>
 								</div>
 							{/if}
-							<Button variant="secondary" onclick={cancelEditing}>Anuluj</Button>
+							{#if projects.length > 1}
+								<Button variant="secondary" onclick={cancelEditing}>Anuluj</Button>
+							{/if}
 							<Button
 								variant="primary"
 								onclick={handleSaveProject}
@@ -757,13 +766,19 @@
 					>
 						<div class="text-center">
 							<Edit2 class="mx-auto mb-4 size-12 text-slate-600" />
-							<h3 class="text-lg font-medium text-slate-400">Wybierz projekt do edycji</h3>
+							<h3 class="text-lg font-medium text-slate-400">
+								{projects.length === 0
+									? 'Brak skonfigurowanych projektów'
+									: 'Wybierz projekt do edycji'}
+							</h3>
 							<p class="mt-2 mb-6 text-sm text-slate-600">
-								Lub dodaj nowy projekt, aby skonfigurować połączenia Jira
+								{projects.length === 0
+									? 'Dodaj swój pierwszy projekt, aby zacząć zarządzać migracją danych.'
+									: 'Lub dodaj nowy projekt, aby skonfigurować połączenia Jira'}
 							</p>
 							<Button variant="secondary" onclick={() => (showNewProjectForm = true)}>
 								<Plus class="size-4" />
-								Dodaj nowy projekt
+								{projects.length === 0 ? 'Dodaj pierwszy projekt' : 'Dodaj nowy projekt'}
 							</Button>
 						</div>
 					</div>

@@ -1,4 +1,4 @@
-import { SvelteSet } from 'svelte/reactivity';
+import { SvelteSet, SvelteMap } from 'svelte/reactivity';
 import { formatTime } from '$lib/utils';
 import { settingsStore } from './settings.svelte';
 
@@ -133,13 +133,42 @@ function createMigrationStore() {
 	}
 
 	function setJiraYParents(parents: ParentTask[]) {
+		// Collect existing pending migrations (isNew children) grouped by parent issueKey
+		const pendingByParentKey = new SvelteMap<string, WorklogEntry[]>();
+		const existingPlaceholders = new SvelteMap<string, ParentTask>();
+
+		for (const p of state.jiraYParents) {
+			const pending = p.children.filter((c) => c.isNew);
+			if (pending.length > 0) {
+				pendingByParentKey.set(p.issueKey, pending);
+				// If it has "Z reguły" status, it's likely a placeholder created by applyRules
+				if (p.status === 'Z reguły') {
+					existingPlaceholders.set(p.issueKey, p);
+				}
+			}
+		}
+
+		// Update state with new parents, but merge pending children
 		state.jiraYParents = parents.map((p) => {
-			const totalSeconds = p.children.reduce((sum, c) => sum + (c.timeSpentSeconds || 0), 0);
+			const initialTotalSeconds = p.children.reduce((sum, c) => sum + (c.timeSpentSeconds || 0), 0);
+			const pendingByRule = pendingByParentKey.get(p.issueKey) || [];
+
 			return {
 				...p,
-				initialTotalTimeSeconds: totalSeconds
+				initialTotalTimeSeconds: initialTotalSeconds,
+				children: [...p.children, ...pendingByRule]
 			};
 		});
+
+		// Add back any placeholder parents that weren't in the new list but have pending worklogs
+		for (const key of pendingByParentKey.keys()) {
+			if (!state.jiraYParents.find((p) => p.issueKey === key)) {
+				const placeholder = existingPlaceholders.get(key);
+				if (placeholder) {
+					state.jiraYParents.push(placeholder);
+				}
+			}
+		}
 	}
 
 	function setLoadingX(loading: boolean) {
@@ -379,6 +408,12 @@ function createMigrationStore() {
 		}
 	}
 
+	function clearAllData() {
+		state.jiraXWorklogs = [];
+		state.jiraYParents = [];
+		state.selectedWorklogIds = new SvelteSet<string>();
+	}
+
 	function getMigrationSummary(): {
 		parentKey: string;
 		parentSummary: string;
@@ -435,7 +470,7 @@ function createMigrationStore() {
 		if (!activeProject || !activeProject.rules || activeProject.rules.length === 0) return;
 
 		// Group worklogs by target parent key
-		const ruleMatches = new Map<string, WorklogEntry[]>();
+		const ruleMatches = new SvelteMap<string, WorklogEntry[]>();
 
 		state.jiraXWorklogs.forEach((worklog) => {
 			for (const rule of activeProject.rules) {
@@ -526,6 +561,7 @@ function createMigrationStore() {
 		getTotalChildrenTime,
 		getTotalPendingMigration,
 		clearAllChildren,
+		clearAllData,
 		getMigrationSummary,
 		toggleWorklogSelection,
 		selectAllWorklogs,
