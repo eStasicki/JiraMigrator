@@ -50,3 +50,7 @@ export function getTotalProgress(worklogs: any[]): string {
 	const totalSeconds = worklogs.reduce((sum, w) => sum + (w.timeSpentSeconds || 0), 0);
 	return formatSeconds(totalSeconds);
 }
+
+export function isJiraCloud(baseUrl: string): boolean {
+	return baseUrl?.toLowerCase().includes('.atlassian.net');
+}

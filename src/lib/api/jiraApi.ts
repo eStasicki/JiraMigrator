@@ -1,7 +1,7 @@
 /**
  * Jira & Tempo Cloud API client
  */
-import { formatSeconds, getLocalDateString } from '$lib/utils';
+import { formatSeconds, getLocalDateString, isJiraCloud } from '$lib/utils';
 
 export interface ConnectionTestResult {
 	success: boolean;
@@ -310,23 +310,25 @@ export async function migrateWorklogsToJiraY(
 							started: worklog.started
 								? `${worklog.started}T09:00:00.000+0000`
 								: new Date().toISOString(),
-							comment: {
-								type: 'doc',
-								version: 1,
-								content: [
-									{
-										type: 'paragraph',
+							comment: isJiraCloud(baseUrl)
+								? {
+										type: 'doc',
+										version: 1,
 										content: [
 											{
-												type: 'text',
-												text:
-													worklog.comment ||
-													`Zmigrowano z ${worklog.issueKey}: ${worklog.issueSummary}`
+												type: 'paragraph',
+												content: [
+													{
+														type: 'text',
+														text:
+															worklog.comment ||
+															`Zmigrowano z ${worklog.issueKey}: ${worklog.issueSummary}`
+													}
+												]
 											}
 										]
 									}
-								]
-							}
+								: worklog.comment || `Zmigrowano z ${worklog.issueKey}: ${worklog.issueSummary}`
 						}
 					})
 				});

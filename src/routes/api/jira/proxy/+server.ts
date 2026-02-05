@@ -28,8 +28,32 @@ export const POST: RequestHandler = async ({ request }) => {
 				return json({ error: 'Nieprawidłowy URL Jiry' }, { status: 400 });
 			}
 			const normalizedUrl = baseUrl.replace(/\/+$/, '');
-			targetUrl = `${normalizedUrl}${endpoint.startsWith('/') ? endpoint : '/' + endpoint}`;
-			authHeader = `Basic ${Buffer.from(`${email}:${apiToken}`).toString('base64')}`;
+			const isCloud = normalizedUrl.includes('.atlassian.net');
+
+			// Auto-correct endpoint version for Jira Server/Data Center
+			let finalEndpoint = endpoint;
+			if (!isCloud) {
+				// Server/DC uses v2 and doesn't have /jql suffix for search
+				finalEndpoint = endpoint
+					.replace('/rest/api/3/search/jql', '/rest/api/2/search')
+					.replace('/rest/api/3/', '/rest/api/2/');
+
+				if (finalEndpoint !== endpoint) {
+					console.log(`[Proxy] Adapted endpoint for Server/DC: ${endpoint} -> ${finalEndpoint}`);
+				}
+			}
+
+			targetUrl = `${normalizedUrl}${finalEndpoint.startsWith('/') ? finalEndpoint : '/' + finalEndpoint}`;
+			const sep = targetUrl.includes('?') ? '&' : '?';
+			targetUrl = `${targetUrl}${sep}os_authType=basic`;
+
+			// For non-Cloud Jira (Server/DC), we use Bearer auth (PAT) which proved successful.
+			// For Cloud, we stick to Basic (email:token).
+			if (!isCloud) {
+				authHeader = `Bearer ${apiToken}`;
+			} else {
+				authHeader = `Basic ${Buffer.from(`${email}:${apiToken}`, 'latin1').toString('base64')}`;
+			}
 		}
 
 		console.log(`[Proxy] ${method} ${targetUrl} (Tempo: ${isTempo})`);

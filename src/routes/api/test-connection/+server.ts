@@ -10,17 +10,15 @@ export interface ConnectionTestResult {
 
 export const POST: RequestHandler = async ({ request }) => {
 	try {
-		let { baseUrl, email, apiToken, type = 'jira' } = await request.json();
+		const data = await request.json();
+		let { baseUrl, email } = data;
+		const { apiToken, type = 'jira' } = data;
 
-		baseUrl = baseUrl?.trim();
+		baseUrl = baseUrl?.trim()?.replace(/\/+$/, '');
 		email = email?.trim();
-		apiToken = apiToken?.trim()?.replace(/^["'\[]+|["'\]]+$/g, '');
 
 		if (!baseUrl || !apiToken) {
-			return json({
-				success: false,
-				message: 'URL i Token są wymagane'
-			} satisfies ConnectionTestResult);
+			return json({ success: false, message: 'URL i Token są wymagane' });
 		}
 
 		if (type === 'tempo') {
@@ -32,7 +30,6 @@ export const POST: RequestHandler = async ({ request }) => {
 			console.log(`=== TEMPO CONNECTION TEST (${tempoHost}) ===`);
 
 			const response = await fetch(testUrl, {
-				method: 'GET',
 				headers: {
 					Authorization: `Bearer ${apiToken}`,
 					Accept: 'application/json'
@@ -44,7 +41,7 @@ export const POST: RequestHandler = async ({ request }) => {
 					success: true,
 					message: 'Połączenie z Tempo nawiązane!',
 					serverInfo: `Host: ${tempoHost} (v4)`
-				} satisfies ConnectionTestResult);
+				});
 			} else {
 				const status = response.status;
 				let msg = `Błąd Tempo (${status})`;
@@ -54,39 +51,69 @@ export const POST: RequestHandler = async ({ request }) => {
 				return json({
 					success: false,
 					message: msg
-				} satisfies ConnectionTestResult);
+				});
 			}
 		} else {
 			// TEST JIRA CONNECTION
-			const normalizedUrl = baseUrl.replace(/\/+$/, '');
-			const credentials = `${email}:${apiToken}`;
-			const authString = Buffer.from(credentials).toString('base64');
-			const jiraUrl = `${normalizedUrl}/rest/api/3/myself`;
+			const testEndpoints = [
+				`${baseUrl}/rest/api/2/myself?os_authType=basic`,
+				`${baseUrl}/rest/api/2/serverInfo?os_authType=basic`
+			];
 
-			console.log('=== JIRA CONNECTION TEST ===');
+			console.log(`\n=== JIRA UNIVERSAL TEST: ${baseUrl} ===`);
 
-			const response = await fetch(jiraUrl, {
-				method: 'GET',
-				headers: {
-					Authorization: `Basic ${authString}`,
-					Accept: 'application/json'
+			// Try Bearer (PAT) first as it worked in the user's curl, then Basic
+			const strategies = [
+				{ name: 'Bearer (PAT)', header: `Bearer ${apiToken}` },
+				{
+					name: 'Basic (Email:Token)',
+					header: `Basic ${Buffer.from(`${email}:${apiToken}`, 'latin1').toString('base64')}`
 				}
-			});
+			];
 
-			if (response.ok) {
-				const user = await response.json();
-				return json({
-					success: true,
-					message: 'Połączenie z Jirą nawiązane!',
-					userEmail: user.emailAddress || email,
-					serverInfo: `Zalogowano jako: ${user.displayName}`
-				} satisfies ConnectionTestResult);
+			let lastStatus = 401;
+
+			for (const strategy of strategies) {
+				console.log(`Trying strategy: ${strategy.name}`);
+				for (const endpoint of testEndpoints) {
+					try {
+						const response = await fetch(endpoint, {
+							method: 'GET',
+							headers: {
+								Authorization: strategy.header,
+								Accept: 'application/json',
+								'X-Atlassian-Token': 'nocheck',
+								'X-Requested-With': 'XMLHttpRequest'
+							},
+							redirect: 'manual'
+						});
+
+						lastStatus = response.status;
+						console.log(`Endpoint ${endpoint} -> Status ${lastStatus}`);
+
+						if (response.ok) {
+							const result = await response.json();
+							console.log(`SUCCESS with ${strategy.name}`);
+							return json({
+								success: true,
+								message: `Połączenie nawiązane (${strategy.name})!`,
+								userEmail: result.emailAddress || result.name || email,
+								serverInfo: `Zalogowano jako: ${result.displayName || result.name || result.serverTitle || 'Użytkownik'}`
+							});
+						}
+					} catch (err: any) {
+						console.log(`Error: ${err.message}`);
+					}
+				}
 			}
 
-			return json({
-				success: false,
-				message: `Błąd Jiry (${response.status})`
-			} satisfies ConnectionTestResult);
+			let errorMsg = `Błąd Jiry (${lastStatus})`;
+			if (lastStatus === 401) {
+				errorMsg =
+					'Błąd 401: Nieautoryzowany. Sprawdź czy token jest poprawny (spróbuj wygenerować nowy PAT w Jirze).';
+			}
+
+			return json({ success: false, message: errorMsg });
 		}
 	} catch (error) {
 		console.error('Connection test error:', error);

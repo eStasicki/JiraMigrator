@@ -701,6 +701,23 @@
 										<li>Nadaj tokenowi nazwę (np. "Jira Migrator")</li>
 										<li>Skopiuj wygenerowany token</li>
 									</ol>
+									<div class="mt-4 border-t border-slate-700/50 pt-3">
+										<p class="text-xs font-semibold tracking-wider text-slate-300 uppercase">
+											Jira Server / Data Center:
+										</p>
+										<p class="mt-1 text-sm text-slate-400">
+											W przypadku instancji lokalnej (nie atlassian.net):
+										</p>
+										<ul class="mt-1 list-inside list-disc space-y-1 text-sm text-slate-400">
+											<li>
+												W polu <strong>Email</strong> wpisz swoją nazwę użytkownika (username)
+											</li>
+											<li>
+												W polu <strong>API Token</strong> wpisz swoje hasło lub wygenerowany
+												<strong>Personal Access Token (PAT)</strong>
+											</li>
+										</ul>
+									</div>
 								</div>
 							</div>
 						</div>
