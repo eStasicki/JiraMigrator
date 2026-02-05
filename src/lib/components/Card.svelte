@@ -11,7 +11,7 @@
 </script>
 
 <div
-	class="rounded-xl border border-slate-700/50 bg-gradient-to-br from-slate-800/80 to-slate-900/80 p-6 backdrop-blur-sm {className}"
+	class="rounded-xl border border-slate-700/50 bg-linear-to-br from-slate-800/80 to-slate-900/80 p-6 backdrop-blur-sm {className}"
 >
 	<h2 class="mb-6 border-b border-slate-700/50 pb-4 text-lg font-semibold text-white">
 		{title}

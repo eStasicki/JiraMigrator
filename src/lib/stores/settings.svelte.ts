@@ -1,4 +1,5 @@
 import { browser } from '$app/environment';
+import { authFacade } from '$lib/auth/authFacade.svelte';
 
 export interface JiraConfig {
 	name: string;
@@ -94,9 +95,21 @@ function createSettingsStore() {
 		}
 	}
 
-	function saveToStorage() {
+	function setSettings(newSettings: AppSettings) {
+		settings = newSettings;
+		saveToStorage();
+	}
+
+	async function saveToStorage() {
 		if (browser) {
 			localStorage.setItem(STORAGE_KEY, JSON.stringify(settings));
+		}
+
+		// Sync with Supabase if logged in
+		if (authFacade.user) {
+			// Ensure we send a plain object, stripping any Svelte proxies
+			const plainSettings = JSON.parse(JSON.stringify(settings));
+			await authFacade.updateProfile({ settings: plainSettings });
 		}
 	}
 
@@ -105,6 +118,10 @@ function createSettingsStore() {
 		settings.projects = [...settings.projects, newProject];
 
 		if (settings.projects.length === 1) {
+			// If this is the first project, make it active
+			settings.activeProjectId = newProject.id;
+		} else if (!settings.activeProjectId) {
+			// Safety fallback
 			settings.activeProjectId = newProject.id;
 		}
 
@@ -122,11 +139,14 @@ function createSettingsStore() {
 		saveToStorage();
 	}
 
-	function updateProject(projectId: string, updates: Partial<Omit<Project, 'id' | 'createdAt'>>) {
+	async function updateProject(
+		projectId: string,
+		updates: Partial<Omit<Project, 'id' | 'createdAt'>>
+	) {
 		const index = settings.projects.findIndex((p) => p.id === projectId);
 		if (index !== -1) {
 			settings.projects[index] = { ...settings.projects[index], ...updates };
-			saveToStorage();
+			await saveToStorage();
 		}
 	}
 
@@ -139,7 +159,14 @@ function createSettingsStore() {
 
 	function getActiveProject(): Project | null {
 		if (!settings.activeProjectId) return null;
-		return settings.projects.find((p) => p.id === settings.activeProjectId) || null;
+		// Handle case where active project might have been deleted
+		const project = settings.projects.find((p) => p.id === settings.activeProjectId);
+		if (!project && settings.projects.length > 0) {
+			// Auto-fix consistency
+			settings.activeProjectId = settings.projects[0].id;
+			return settings.projects[0];
+		}
+		return project || null;
 	}
 
 	function isProjectConfigured(project: Project): boolean {
@@ -164,6 +191,19 @@ function createSettingsStore() {
 		if (browser) {
 			localStorage.removeItem(STORAGE_KEY);
 		}
+		if (authFacade.user) {
+			authFacade.updateProfile({ settings: defaultSettings });
+		}
+	}
+
+	// Sync from cloud (downstream) - updates local state only, does NOT push back to cloud
+	function syncFromCloud(newSettings: AppSettings) {
+		console.log('SettingsStore: Syncing from cloud (downstream update)', newSettings);
+		settings = newSettings;
+		// We still save to localStorage to persist the cloud state locally
+		if (browser) {
+			localStorage.setItem(STORAGE_KEY, JSON.stringify(settings));
+		}
 	}
 
 	function setTimeFormat(format: 'hm' | 'decimal') {
@@ -183,7 +223,9 @@ function createSettingsStore() {
 		isProjectConfigured,
 		isActiveProjectConfigured,
 		setTimeFormat,
-		reset
+		reset,
+		setSettings,
+		syncFromCloud
 	};
 }
 

@@ -33,6 +33,7 @@
 	let editingProjectId = $state<string | null>(null);
 	let newProjectName = $state('');
 	let showNewProjectForm = $state(false);
+	let isSaving = $state(false);
 
 	// Confirm modal state
 	let showDeleteModal = $state(false);
@@ -147,18 +148,25 @@
 		}
 	}
 
-	function handleSaveProject() {
+	async function handleSaveProject() {
 		if (editingProject && editingProjectId) {
-			settingsStore.updateProject(editingProjectId, {
-				name: editingProject.name,
-				jiraX: { ...editingProject.jiraX },
-				jiraY: { ...editingProject.jiraY },
-				rules: [...(editingProject.rules || [])]
-			});
-			showSavedMessage = true;
-			setTimeout(() => {
-				showSavedMessage = false;
-			}, 3000);
+			isSaving = true;
+			try {
+				await settingsStore.updateProject(editingProjectId, {
+					name: editingProject.name,
+					jiraX: { ...editingProject.jiraX },
+					jiraY: { ...editingProject.jiraY },
+					rules: [...(editingProject.rules || [])]
+				});
+				showSavedMessage = true;
+				setTimeout(() => {
+					showSavedMessage = false;
+				}, 3000);
+			} catch (e) {
+				console.error('Failed to save project:', e);
+			} finally {
+				isSaving = false;
+			}
 		}
 	}
 
@@ -752,10 +760,15 @@
 							<Button
 								variant="primary"
 								onclick={handleSaveProject}
-								disabled={!isProjectFormValid()}
+								disabled={!isProjectFormValid() || isSaving}
 							>
-								<Save class="size-4" />
-								Zapisz projekt
+								{#if isSaving}
+									<Loader2 class="size-4 animate-spin" />
+									Zapisywanie...
+								{:else}
+									<Save class="size-4" />
+									Zapisz projekt
+								{/if}
 							</Button>
 						</div>
 					</div>

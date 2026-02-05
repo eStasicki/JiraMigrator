@@ -10,6 +10,8 @@
 	import { page } from '$app/stores';
 	import { goto } from '$app/navigation';
 	import { settingsStore } from '$lib/stores/settings.svelte';
+	import { authFacade } from '$lib/auth/authFacade.svelte';
+	import { LogIn } from 'lucide-svelte';
 
 	const navItems = [
 		{ href: '/', label: 'Migracja', icon: ArrowLeftRight },
@@ -44,7 +46,7 @@
 			<!-- Logo -->
 			<a href="/" class="flex items-center gap-3">
 				<div
-					class="flex size-10 items-center justify-center rounded-xl bg-gradient-to-br from-violet-600 to-indigo-600 shadow-lg shadow-violet-500/30"
+					class="flex size-10 items-center justify-center rounded-xl bg-linear-to-br from-violet-600 to-indigo-600 shadow-lg shadow-violet-500/30"
 				>
 					<ArrowLeftRight class="size-5 text-white" />
 				</div>
@@ -68,7 +70,7 @@
 					>
 						{#if activeProject}
 							<div
-								class="flex size-6 items-center justify-center rounded bg-gradient-to-br from-violet-500 to-fuchsia-600 text-xs font-bold text-white"
+								class="flex size-6 items-center justify-center rounded bg-linear-to-br from-violet-500 to-fuchsia-600 text-xs font-bold text-white"
 							>
 								{activeProject.name.charAt(0).toUpperCase()}
 							</div>
@@ -98,7 +100,7 @@
 										: 'text-slate-300 hover:bg-slate-700/50'}"
 								>
 									<div
-										class="flex size-8 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-violet-500 to-fuchsia-600 text-sm font-bold text-white"
+										class="flex size-8 shrink-0 items-center justify-center rounded-lg bg-linear-to-br from-violet-500 to-fuchsia-600 text-sm font-bold text-white"
 									>
 										{project.name.charAt(0).toUpperCase()}
 									</div>
@@ -148,10 +150,39 @@
 							? 'bg-slate-800 text-white'
 							: 'text-slate-400 hover:bg-slate-800/50 hover:text-white'}"
 					>
-						<svelte:component this={item.icon} class="size-4" />
+						<item.icon class="size-4" />
 						{item.label}
 					</a>
 				{/each}
+
+				<div class="ml-2 h-6 border-l border-slate-800"></div>
+
+				{#if authFacade.user}
+					<div class="ml-2 flex items-center gap-3">
+						<div class="hidden text-right md:block">
+							<p class="text-xs font-medium text-white">{authFacade.user.email}</p>
+							<button
+								onclick={() => authFacade.signOut()}
+								class="text-[10px] text-slate-500 transition-colors hover:text-rose-400"
+							>
+								Wyloguj się
+							</button>
+						</div>
+						<div
+							class="flex size-8 items-center justify-center rounded-full border border-slate-700 bg-slate-800 text-xs font-bold text-violet-400"
+						>
+							{authFacade.user.email?.charAt(0).toUpperCase()}
+						</div>
+					</div>
+				{:else}
+					<a
+						href="/login"
+						class="ml-2 flex items-center gap-2 rounded-lg bg-violet-600 px-4 py-2 text-sm font-bold text-white transition-all hover:bg-violet-500 hover:shadow-lg hover:shadow-violet-500/20"
+					>
+						<LogIn class="size-4" />
+						Logowanie
+					</a>
+				{/if}
 			</div>
 		</div>
 	</div>

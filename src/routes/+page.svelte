@@ -160,6 +160,7 @@
 
 	$effect(() => {
 		const currentProjectId = activeProject?.id ?? null;
+		console.log('Project ID changed:', currentProjectId);
 
 		// If project changed (not just on initial mount)
 		if (lastActiveProjectId !== null && lastActiveProjectId !== currentProjectId) {
