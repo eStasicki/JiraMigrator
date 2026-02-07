@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { ChevronDown, ChevronRight, Clock, Trash2, GripVertical } from 'lucide-svelte';
+	import { ChevronDown, ChevronRight, Clock, Trash2, CheckSquare, Square } from 'lucide-svelte';
 	import type { ParentTask, WorklogEntry } from '$lib/stores/migration.svelte';
 	import { migrationStore } from '$lib/stores/migration.svelte';
 	import { flip } from 'svelte/animate';
@@ -12,6 +12,11 @@
 	let { parent }: Props = $props();
 
 	const isDragOver = $derived(migrationStore.state.dragOverParentId === parent.id);
+	const selectedChildrenCount = $derived(migrationStore.getSelectedChildrenCount(parent.id));
+	const selectedChildrenTime = $derived(migrationStore.getSelectedChildrenTotalTime(parent.id));
+	const allChildrenSelected = $derived(
+		parent.children.length > 0 && selectedChildrenCount === parent.children.length
+	);
 
 	function handleDragEnter(e: DragEvent) {
 		e.preventDefault();
@@ -68,6 +73,18 @@
 
 	function handleToggleExpand() {
 		migrationStore.toggleParentExpanded(parent.id);
+	}
+
+	function handleToggleSelectAll() {
+		if (allChildrenSelected) {
+			migrationStore.deselectAllChildrenInParent(parent.id);
+		} else {
+			migrationStore.selectAllChildrenInParent(parent.id);
+		}
+	}
+
+	function handleRemoveSelected() {
+		migrationStore.removeSelectedChildrenFromParent(parent.id);
 	}
 
 	function getChildrenTotalTime(): string {
@@ -185,13 +202,56 @@
 					{/if}
 				</div>
 			{:else}
+				<!-- Selection toolbar for children -->
+				<div class="mb-3 flex items-center justify-between rounded-lg bg-slate-900/50 px-3 py-2">
+					<button
+						type="button"
+						onclick={handleToggleSelectAll}
+						class="flex items-center gap-2 text-sm text-slate-400 transition-colors hover:text-white"
+					>
+						{#if allChildrenSelected}
+							<CheckSquare class="size-4 text-emerald-400" />
+							<span>Odznacz wszystkie</span>
+						{:else}
+							<Square class="size-4" />
+							<span>Zaznacz wszystkie</span>
+						{/if}
+					</button>
+
+					{#if selectedChildrenCount > 0}
+						<div class="flex items-center gap-2">
+							<span class="text-sm text-slate-400">
+								Zaznaczono: <span class="font-semibold text-emerald-400"
+									>{selectedChildrenCount}</span
+								>
+							</span>
+							<span
+								class="rounded bg-emerald-500/20 px-2 py-0.5 text-xs font-semibold text-emerald-400"
+							>
+								{selectedChildrenTime}
+							</span>
+							<button
+								type="button"
+								onclick={handleRemoveSelected}
+								class="rounded-lg p-1.5 text-slate-500 transition-colors hover:bg-red-500/20 hover:text-red-400"
+								title="Usuń zaznaczone"
+							>
+								<Trash2 class="size-4" />
+							</button>
+						</div>
+					{/if}
+				</div>
+
 				<div class="space-y-2">
 					{#each parent.children as child (child.id)}
 						<div animate:flip={{ duration: 300 }}>
 							<WorklogCard
 								worklog={child}
 								draggable={true}
-								showCheckbox={false}
+								showCheckbox={true}
+								isSelected={migrationStore.isChildWorklogSelected(parent.id, child.id)}
+								onToggleSelect={() =>
+									migrationStore.toggleChildWorklogSelection(parent.id, child.id)}
 								dropTargetParentId={parent.id}
 								onRemove={() => handleRemoveChild(child.id)}
 							/>

@@ -392,11 +392,35 @@ export async function migrateWorklogsToJiraY(
 	email: string,
 	apiToken: string,
 	migrations: { parentKey: string; children: any[] }[],
-	tempoToken?: string
+	targetDate: Date,
+	tempoToken?: string,
+	onProgress?: (progress: {
+		current: number;
+		total: number;
+		percentage: number;
+		currentParent: string;
+		currentWorklog: string;
+		phase: string;
+	}) => void
 ): Promise<{ success: boolean; migratedCount: number }> {
 	let migratedCount = 0;
+	const targetDateStr = getLocalDateString(targetDate);
+
+	// Calculate total worklogs
+	const totalWorklogs = migrations.reduce((sum, m) => sum + m.children.length, 0);
+	let processedWorklogs = 0;
+
 	try {
 		// 1. Get Account ID if using Tempo
+		onProgress?.({
+			current: 0,
+			total: totalWorklogs,
+			percentage: 0,
+			currentParent: '',
+			currentWorklog: '',
+			phase: 'Inicjalizacja...'
+		});
+
 		let authorAccountId = '';
 		if (tempoToken) {
 			const myselfRes = await fetch('/api/jira/proxy', {
@@ -419,6 +443,15 @@ export async function migrateWorklogsToJiraY(
 		// 2. Fetch Work Attributes definitions (Reference)
 		let workAttributeDefinitions: any[] = [];
 		if (tempoToken) {
+			onProgress?.({
+				current: 0,
+				total: totalWorklogs,
+				percentage: 0,
+				currentParent: '',
+				currentWorklog: '',
+				phase: 'Pobieranie atrybutów Tempo...'
+			});
+
 			const attrsRes = await fetch('/api/jira/proxy', {
 				method: 'POST',
 				headers: { 'Content-Type': 'application/json' },
@@ -441,6 +474,15 @@ export async function migrateWorklogsToJiraY(
 			// Resolve Issue ID and Summary for Tempo (required instead of Key)
 			let issueIdForTempo: number | undefined;
 			let parentSummary = '';
+
+			onProgress?.({
+				current: processedWorklogs,
+				total: totalWorklogs,
+				percentage: Math.round((processedWorklogs / totalWorklogs) * 100),
+				currentParent: migration.parentKey,
+				currentWorklog: '',
+				phase: `Przygotowanie zadania ${migration.parentKey}...`
+			});
 
 			if (tempoToken) {
 				const issueRes = await fetch('/api/jira/proxy', {
@@ -504,10 +546,22 @@ export async function migrateWorklogsToJiraY(
 			}
 
 			for (const worklog of migration.children) {
+				processedWorklogs++;
+				const percentage = Math.round((processedWorklogs / totalWorklogs) * 100);
+
+				onProgress?.({
+					current: processedWorklogs,
+					total: totalWorklogs,
+					percentage,
+					currentParent: migration.parentKey,
+					currentWorklog: `${worklog.issueKey} - ${worklog.timeSpentFormatted}`,
+					phase: 'Migrowanie worklogów...'
+				});
+
 				let response;
 
 				if (tempoToken && authorAccountId && issueIdForTempo) {
-					// TEMPO MIGRATION
+					// TEMPO MIGRATION - Use targetDate from calendar
 					response = await fetch('/api/jira/proxy', {
 						method: 'POST',
 						headers: { 'Content-Type': 'application/json' },
@@ -519,8 +573,8 @@ export async function migrateWorklogsToJiraY(
 							method: 'POST',
 							body: {
 								issueId: issueIdForTempo,
-								timeSpentSeconds: worklog.timeSpentSeconds, // Use actual time
-								startDate: worklog.started || new Date().toISOString().split('T')[0],
+								timeSpentSeconds: worklog.timeSpentSeconds,
+								startDate: targetDateStr, // Use date from calendar
 								startTime: '09:00:00',
 								description: `[${worklog.issueKey}] ${worklog.comment || worklog.issueSummary}`,
 								authorAccountId: authorAccountId,
@@ -530,7 +584,7 @@ export async function migrateWorklogsToJiraY(
 						})
 					});
 				} else {
-					// NATIVE JIRA
+					// NATIVE JIRA - Use targetDate from calendar
 					response = await fetch('/api/jira/proxy', {
 						method: 'POST',
 						headers: { 'Content-Type': 'application/json' },
@@ -542,9 +596,7 @@ export async function migrateWorklogsToJiraY(
 							method: 'POST',
 							body: {
 								timeSpentSeconds: worklog.timeSpentSeconds,
-								started: worklog.started
-									? `${worklog.started}T09:00:00.000+0000`
-									: new Date().toISOString(),
+								started: `${targetDateStr}T09:00:00.000+0000`, // Use date from calendar
 								comment: `[${worklog.issueKey}] ${worklog.comment || worklog.issueSummary}`
 							}
 						})
@@ -560,6 +612,16 @@ export async function migrateWorklogsToJiraY(
 				}
 			}
 		}
+
+		onProgress?.({
+			current: totalWorklogs,
+			total: totalWorklogs,
+			percentage: 100,
+			currentParent: '',
+			currentWorklog: '',
+			phase: 'Zakończono!'
+		});
+
 		return { success: migratedCount > 0, migratedCount };
 	} catch (error) {
 		console.error('Migration error:', error);

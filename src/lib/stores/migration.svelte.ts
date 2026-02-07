@@ -38,6 +38,7 @@ export interface MigrationState {
 	jiraXWorklogs: WorklogEntry[];
 	jiraYParents: ParentTask[];
 	selectedWorklogIds: Set<string>;
+	selectedChildWorklogIds: Map<string, Set<string>>; // parentId -> Set of child worklog IDs
 	isLoadingX: boolean;
 	isLoadingY: boolean;
 	isMigrating: boolean;
@@ -96,6 +97,7 @@ function createMigrationStore() {
 		jiraXWorklogs: [],
 		jiraYParents: [],
 		selectedWorklogIds: new SvelteSet<string>(),
+		selectedChildWorklogIds: new SvelteMap<string, Set<string>>(),
 		isLoadingX: false,
 		isLoadingY: false,
 		isMigrating: false,
@@ -309,6 +311,60 @@ function createMigrationStore() {
 		const selected = getSelectedWorklogs();
 		const totalSeconds = selected.reduce((sum, w) => sum + w.timeSpentSeconds, 0);
 		return formatTime(totalSeconds, settingsStore.settings.timeFormat);
+	}
+
+	// Child worklog selection functions
+	function toggleChildWorklogSelection(parentId: string, worklogId: string) {
+		const parentSelections = state.selectedChildWorklogIds.get(parentId) || new SvelteSet<string>();
+		const newSet = new SvelteSet(parentSelections);
+		if (newSet.has(worklogId)) {
+			newSet.delete(worklogId);
+		} else {
+			newSet.add(worklogId);
+		}
+		state.selectedChildWorklogIds.set(parentId, newSet);
+	}
+
+	function selectAllChildrenInParent(parentId: string) {
+		const parent = state.jiraYParents.find((p) => p.id === parentId);
+		if (parent) {
+			state.selectedChildWorklogIds.set(parentId, new SvelteSet(parent.children.map((c) => c.id)));
+		}
+	}
+
+	function deselectAllChildrenInParent(parentId: string) {
+		state.selectedChildWorklogIds.set(parentId, new SvelteSet<string>());
+	}
+
+	function isChildWorklogSelected(parentId: string, worklogId: string): boolean {
+		const parentSelections = state.selectedChildWorklogIds.get(parentId);
+		return parentSelections ? parentSelections.has(worklogId) : false;
+	}
+
+	function getSelectedChildrenInParent(parentId: string): WorklogEntry[] {
+		const parent = state.jiraYParents.find((p) => p.id === parentId);
+		if (!parent) return [];
+		const selectedIds = state.selectedChildWorklogIds.get(parentId) || new SvelteSet<string>();
+		return parent.children.filter((c) => selectedIds.has(c.id));
+	}
+
+	function getSelectedChildrenCount(parentId: string): number {
+		const selectedIds = state.selectedChildWorklogIds.get(parentId);
+		return selectedIds ? selectedIds.size : 0;
+	}
+
+	function getSelectedChildrenTotalTime(parentId: string): string {
+		const selected = getSelectedChildrenInParent(parentId);
+		const totalSeconds = selected.reduce((sum, w) => sum + w.timeSpentSeconds, 0);
+		return formatTime(totalSeconds, settingsStore.settings.timeFormat);
+	}
+
+	async function removeSelectedChildrenFromParent(parentId: string) {
+		const selected = getSelectedChildrenInParent(parentId);
+		if (selected.length > 0) {
+			await moveWorklogsToSource(selected);
+			deselectAllChildrenInParent(parentId);
+		}
 	}
 
 	function addSelectedToParent(
@@ -775,7 +831,16 @@ function createMigrationStore() {
 		addSelectedToParent,
 		updateWorklog,
 		applyRules,
-		moveWorklogToParent
+		moveWorklogToParent,
+		// Child worklog selection
+		toggleChildWorklogSelection,
+		selectAllChildrenInParent,
+		deselectAllChildrenInParent,
+		isChildWorklogSelected,
+		getSelectedChildrenInParent,
+		getSelectedChildrenCount,
+		getSelectedChildrenTotalTime,
+		removeSelectedChildrenFromParent
 	};
 }
 

@@ -99,6 +99,15 @@
 		}
 	}
 
+	let migrationProgress = $state<{
+		current: number;
+		total: number;
+		percentage: number;
+		currentParent: string;
+		currentWorklog: string;
+		phase: string;
+	} | null>(null);
+
 	async function handleMigrate(isDryRun: boolean = false) {
 		if (isDryRun) {
 			console.log('--- DRY RUN COMPLETED ---');
@@ -113,6 +122,7 @@
 		if (!activeProject) return;
 		migrationStore.setMigrating(true);
 		migrationMessage = null;
+		migrationProgress = null;
 
 		try {
 			const summary = migrationStore.getMigrationSummary();
@@ -126,7 +136,11 @@
 				activeProject.jiraY.email,
 				activeProject.jiraY.apiToken,
 				migrations,
-				activeProject.jiraY.tempoToken
+				migrationStore.state.jiraXDate, // Pass the selected date from calendar
+				activeProject.jiraY.tempoToken,
+				(progress) => {
+					migrationProgress = progress;
+				}
 			);
 
 			if (result.success) {
@@ -144,6 +158,7 @@
 			}
 		} finally {
 			migrationStore.setMigrating(false);
+			migrationProgress = null;
 			setTimeout(() => {
 				migrationMessage = null;
 			}, 5000);
@@ -237,6 +252,7 @@
 	onClose={() => (showConfirmModal = false)}
 	onConfirm={handleMigrate}
 	isMigrating={migrationStore.state.isMigrating}
+	{migrationProgress}
 />
 
 <div class="flex min-h-screen flex-col pt-16">
