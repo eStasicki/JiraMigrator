@@ -274,7 +274,7 @@
 	{migrationProgress}
 />
 
-<div class="flex min-h-screen flex-col pt-16 lg:h-screen lg:overflow-hidden">
+<div class="flex min-h-screen flex-col pt-0 lg:h-screen lg:overflow-hidden">
 	<!-- Migration Message -->
 	{#if migrationMessage}
 		<div
@@ -309,7 +309,7 @@
 
 	<!-- Main Content -->
 	<main
-		class="mx-auto flex w-[95%] max-w-[1600px] flex-1 flex-col gap-6 px-0 py-6 lg:min-h-0 lg:w-[80%] lg:overflow-hidden"
+		class="app-container app-page-padding flex flex-1 flex-col gap-6 px-0 lg:min-h-0 lg:overflow-hidden"
 	>
 		{#if !activeProject}
 			<div class="flex flex-1 flex-col items-center justify-center gap-6 text-center">

@@ -125,3 +125,31 @@ label,
 	background: rgb(139 92 246 / 0.3);
 	color: white;
 }
+
+/* Global Layout Variables */
+:root {
+	--app-max-width: 1600px;
+	--app-width-mobile: 95%;
+	--app-width-desktop: 80%;
+	--app-padding-y: 2rem;
+}
+
+/* Unified Container Class */
+.app-container {
+	width: var(--app-width-mobile);
+	max-width: var(--app-max-width);
+	margin-left: auto;
+	margin-right: auto;
+}
+
+/* Consistent Page Padding */
+.app-page-padding {
+	padding-top: var(--app-padding-y);
+	padding-bottom: var(--app-padding-y);
+}
+
+@media (min-width: 1024px) {
+	.app-container {
+		width: var(--app-width-desktop);
+	}
+}

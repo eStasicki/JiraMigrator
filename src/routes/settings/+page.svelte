@@ -252,8 +252,8 @@
 	<meta name="description" content="Zarządzaj projektami i połączeniami z Jira" />
 </svelte:head>
 
-<div class="min-h-screen pt-16">
-	<div class="mx-auto w-[95%] max-w-[1600px] px-0 py-8 lg:w-[80%]">
+<div class="min-h-screen">
+	<div class="app-container app-page-padding px-0">
 		<!-- Header -->
 		<div class="mb-8">
 			<h1 class="text-3xl font-bold text-white">Ustawienia</h1>

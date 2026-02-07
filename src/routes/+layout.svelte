@@ -67,7 +67,11 @@
 	/>
 </svelte:head>
 
-<div class="min-h-screen bg-linear-to-br from-slate-950 via-slate-900 to-slate-950">
+<div
+	class="min-h-screen bg-linear-to-br from-slate-950 via-slate-900 to-slate-950 {authFacade.user
+		? 'pb-24 md:pb-0'
+		: ''}"
+>
 	{#if authFacade.isLoading}
 		<div class="flex h-screen items-center justify-center">
 			<Loader2 class="size-12 animate-spin text-violet-500" />
