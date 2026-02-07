@@ -1,158 +1,167 @@
 # JiraMigrator
 
-Nowoczesna aplikacja SvelteKit 5 z TypeScript, Tailwind CSS i Supabase.
+Modern SvelteKit 5 application with TypeScript, Tailwind CSS, and Supabase.
 
-## Stack Technologiczny
+## Tech Stack
 
 ### Core
 
-- **SvelteKit 5** - Framework aplikacji webowej
-- **TypeScript** - Typowanie statyczne
-- **Vite 7** - Build tool i dev server
+- **SvelteKit 5** - Web application framework
+- **TypeScript** - Static typing
+- **Vite 7** - Build tool and dev server
 
 ### Styling
 
 - **Tailwind CSS 4** - Utility-first CSS framework
-- **@tailwindcss/forms** - Stylowanie formularzy
-- **@tailwindcss/typography** - Stylowanie treści
-- **tailwindcss-animate** - Animacje
-- **Lucide Svelte** - Ikony
+- **@tailwindcss/forms** - Form styling
+- **@tailwindcss/typography** - Content styling
+- **tailwindcss-animate** - Animations
+- **Lucide Svelte** - Icons
 
 ### Backend & Database
 
-- **Supabase** - Backend as a Service (autentykacja, baza danych, storage)
-  - `@supabase/supabase-js` - Klient JavaScript
+- **Supabase** - Backend as a Service (authentication, database, storage)
+  - `@supabase/supabase-js` - JavaScript client
   - `@supabase/ssr` - Server-side rendering support
 
 ### Code Quality
 
-- **ESLint** - Linting kodu
-- **Prettier** - Formatowanie kodu
+- **ESLint** - Code linting
+- **Prettier** - Code formatting
   - `prettier-plugin-svelte`
   - `prettier-plugin-tailwindcss`
 
 ### Testing
 
-- **Vitest** - Unit testing i component testing
+- **Vitest** - Unit testing and component testing
 - **Playwright** - E2E testing
 
-## Rozpoczęcie Pracy
+## Getting Started
 
-### Wymagania
+### Requirements
 
 - Node.js 18+
 - npm/pnpm/yarn
 
-### Instalacja
+### Installation
 
 ```bash
-# Instalacja zależności
+# Install dependencies
 npm install
 
-# Konfiguracja zmiennych środowiskowych
+# Configure environment variables
 cp .env.example .env
-# Wypełnij wartości w pliku .env
+# Fill in values in .env file
 ```
 
 ### Development
 
 ```bash
-# Uruchomienie serwera deweloperskiego
+# Start development server
 npm run dev
 
-# Otwarcie w przeglądarce
+# Open in browser
 npm run dev -- --open
 ```
 
-### Dostępne Skrypty
+### Available Scripts
 
 #### Development
 
-- `npm run dev` - Uruchom serwer deweloperski
-- `npm run preview` - Podgląd wersji produkcyjnej
+- `npm run dev` - Start development server
+- `npm run preview` - Preview production build
 
 #### Build
 
-- `npm run build` - Zbuduj aplikację produkcyjną
+- `npm run build` - Build production application
 
 #### Code Quality
 
-- `npm run format` - Formatuj kod (Prettier)
-- `npm run lint` - Sprawdź kod (ESLint + Prettier)
-- `npm run lint:fix` - Napraw błędy ESLint
-- `npm run typecheck` - Sprawdź typy TypeScript
-- `npm run check` - Sprawdź komponenty Svelte
-- `npm run validate` - Uruchom wszystkie sprawdzenia (format, lint, typecheck, check)
+- `npm run format` - Format code (Prettier)
+- `npm run lint` - Check code (ESLint + Prettier)
+- `npm run lint:fix` - Fix ESLint errors
+- `npm run typecheck` - Check TypeScript types
+- `npm run check` - Check Svelte components
+- `npm run validate` - Run all checks (format, lint, typecheck, check)
 
 #### Testing
 
-- `npm run test` - Uruchom wszystkie testy
-- `npm run test:unit` - Testy jednostkowe (watch mode)
-- `npm run test:unit:ui` - Testy jednostkowe (UI)
-- `npm run test:e2e` - Testy E2E
-- `npm run test:e2e:ui` - Testy E2E (UI)
+- `npm run test` - Run all tests
+- `npm run test:unit` - Unit tests (watch mode)
+- `npm run test:unit:ui` - Unit tests (UI)
+- `npm run test:e2e` - E2E tests
+- `npm run test:e2e:ui` - E2E tests (UI)
 
-## Struktura Projektu
+## Project Structure
 
 ```
 .
 ├── src/
 │   ├── lib/
-│   │   ├── assets/         # Statyczne zasoby
-│   │   ├── supabase.ts     # Klient Supabase
-│   │   ├── utils.ts        # Narzędzia pomocnicze
+│   │   ├── assets/         # Static assets
+│   │   ├── supabase.ts     # Supabase client
+│   │   ├── utils.ts        # Helper utilities
 │   │   └── index.ts
-│   ├── routes/             # Ścieżki aplikacji (file-based routing)
-│   │   ├── +layout.svelte  # Layout główny
-│   │   └── +page.svelte    # Strona główna
-│   └── app.html            # Template HTML
-├── static/                 # Pliki statyczne
-├── e2e/                    # Testy E2E
-├── .env.example            # Przykładowe zmienne środowiskowe
-├── tailwind.config.js      # Konfiguracja Tailwind
-├── vite.config.ts          # Konfiguracja Vite
-└── svelte.config.js        # Konfiguracja SvelteKit
+│   ├── routes/             # Application routes (file-based routing)
+│   │   ├── +layout.svelte  # Main layout
+│   │   └── +page.svelte    # Home page
+│   └── app.html            # HTML template
+├── static/                 # Static files
+├── e2e/                    # E2E tests
+├── .env.example            # Example environment variables
+├── tailwind.config.js      # Tailwind configuration
+├── vite.config.ts          # Vite configuration
+└── svelte.config.js        # SvelteKit configuration
 ```
 
-## Konfiguracja Supabase
+## Supabase Configuration
 
-1. Utwórz projekt na [supabase.com](https://supabase.com)
-2. Skopiuj URL projektu i anon key
-3. Dodaj do pliku `.env`:
+1. Create a project on [supabase.com](https://supabase.com)
+2. Copy project URL and anon key
+3. Add to `.env` file:
 
 ```env
 PUBLIC_SUPABASE_URL=your-project-url
 PUBLIC_SUPABASE_ANON_KEY=your-anon-key
 ```
 
-4. Użyj klienta Supabase w swoim kodzie:
+4. Use Supabase client in your code:
 
 ```typescript
 import { supabase } from '$lib/supabase';
 
-// Przykład użycia
+// Usage example
 const { data, error } = await supabase.from('table').select('*');
 ```
 
 ## Deployment
 
-Aplikacja jest skonfigurowana z `adapter-auto`, który automatycznie wykrywa środowisko deployment.
+The application is configured with `adapter-auto`, which automatically detects the deployment environment.
 
-Popularne platformy:
+Popular platforms:
 
 - **Vercel** - Zero-config deployment
-- **Netlify** - Ciągła integracja
+- **Netlify** - Continuous integration
 - **Cloudflare Pages** - Edge deployment
 
-Dla specyficznego środowiska, zmień adapter w `svelte.config.js`.
+For a specific environment, change the adapter in `svelte.config.js`.
+
+## AI Configuration
+
+The project contains configuration for AI assistants:
+
+- **`.cursorrules`** - Rules for Cursor IDE
+- **`.agent/rules.md`** - Rules for Antigravity (Google Deepmind)
+
+These files ensure that AI assistants have full project context and can generate code following project conventions. See [`.agent/README.md`](.agent/README.md) for more information.
 
 ## Contributing
 
-Przed commitem:
+Before committing:
 
-1. Uruchom `npm run validate` aby sprawdzić kod
-2. Upewnij się, że testy przechodzą: `npm run test`
-3. Commituj z opisowymi wiadomościami
+1. Run `npm run validate` to check code
+2. Ensure tests pass: `npm run test`
+3. Commit with descriptive messages (English, max 50 chars)
 
 ## License
 

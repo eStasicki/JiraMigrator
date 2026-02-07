@@ -1,0 +1,321 @@
+# JiraMigrator - AI Rules for Cursor IDE
+
+You are an expert full-stack developer working on JiraMigrator, a modern web application for migrating worklogs between Jira instances.
+
+## Tech Stack
+
+- **Frontend**: SvelteKit 5 (Runes API), TypeScript, Tailwind CSS 4
+- **Backend**: Supabase (Auth, PostgreSQL, SSR)
+- **Testing**: Vitest, Playwright
+- **Code Quality**: ESLint, Prettier
+
+## Core Principles
+
+### TypeScript
+
+- Use strict mode (all strict flags enabled)
+- Avoid `any` type (only in exceptional cases)
+- Prefer `type` over `interface` for simple structures
+- Export all types used in APIs
+
+### Svelte 5 Runes
+
+- Use `$state()` for reactive variables (not `let`)
+- Use `$derived()` for computed values
+- Use `$effect()` for side effects
+- Use `$props()` for component props
+
+Example:
+
+```svelte
+<script lang="ts">
+	let count = $state(0); // reactive
+	let doubled = $derived(count * 2); // computed
+
+	$effect(() => {
+		console.log('Count changed:', count);
+	});
+</script>
+```
+
+### Component Structure
+
+```svelte
+<script lang="ts">
+	// 1. Imports
+	import { cn } from '$lib/utils';
+
+	// 2. Props
+	let { title, items = [] } = $props<{ title: string; items?: Item[] }>();
+
+	// 3. State
+	let isOpen = $state(false);
+
+	// 4. Derived values
+	let itemCount = $derived(items.length);
+
+	// 5. Effects
+	$effect(() => {
+		// side effects
+	});
+
+	// 6. Functions
+	function handleClick() {
+		isOpen = !isOpen;
+	}
+</script>
+
+<!-- Template -->
+<div class={cn('base-class', isOpen && 'open-class')}>
+	<!-- content -->
+</div>
+```
+
+### Styling
+
+- **Tailwind-first**: Use Tailwind classes over custom CSS
+- **Responsive**: Always consider mobile breakpoints
+- **Dark mode**: Support dark mode with Tailwind's `dark:` prefix
+- **Utility function**: Use `cn()` from `$lib/utils` for conditional classes
+
+### API & Data Fetching
+
+- Use Supabase client from `$lib/supabase`
+- Always handle errors from API calls
+- Show loading states for async operations
+- Use proper TypeScript types for API responses
+
+Example:
+
+```typescript
+const { data, error } = await supabase.from('projects').select('*');
+if (error) {
+  console.error('Failed to fetch projects:', error.message);
+  return;
+}
+```
+
+### File Naming
+
+- Components: PascalCase (e.g., `WorklogCard.svelte`)
+- Routes: SvelteKit convention (`+page.svelte`, `+layout.svelte`, `+server.ts`)
+- Utils: camelCase (e.g., `formatTime.ts`)
+- Types: PascalCase (e.g., `Worklog.ts`)
+
+## Project Structure
+
+```
+src/
+├── lib/
+│   ├── api/              # API clients (Jira, Supabase)
+│   ├── components/       # Reusable components
+│   ├── stores/           # Svelte stores
+│   ├── types/            # TypeScript types
+│   ├── utils/            # Utility functions
+│   └── supabase.ts       # Supabase client
+├── routes/
+│   ├── +layout.svelte    # Root layout
+│   ├── +page.svelte      # Home page (worklog migration)
+│   ├── settings/         # Settings page
+│   └── auth/             # Auth callbacks
+└── app.html              # HTML template
+```
+
+## Key Features
+
+### Authentication
+
+- Google OAuth via Supabase
+- Server-side session management
+- Protected routes
+
+### Worklog Migration
+
+- Display worklogs from Jira X (source)
+- Display parent tasks from Jira Y (target)
+- Drag & drop to assign worklogs to tasks
+- Automatic migration rules (based on task keys/labels)
+- Persist configuration in Supabase
+
+## Common Patterns
+
+### Error Handling
+
+```typescript
+try {
+  const result = await someAsyncOperation();
+  // handle success
+} catch (error) {
+  console.error('Operation failed:', error);
+  // show user-friendly error message
+}
+```
+
+### Loading States
+
+```svelte
+<script lang="ts">
+	let isLoading = $state(false);
+
+	async function loadData() {
+		isLoading = true;
+		try {
+			// fetch data
+		} finally {
+			isLoading = false;
+		}
+	}
+</script>
+
+{#if isLoading}
+	<LoadingSpinner />
+{:else}
+	<!-- content -->
+{/if}
+```
+
+### Form Handling
+
+```svelte
+<script lang="ts">
+	let formData = $state({ name: '', email: '' });
+
+	async function handleSubmit(e: SubmitEvent) {
+		e.preventDefault();
+		// validate and submit
+	}
+</script>
+
+<form onsubmit={handleSubmit}>
+	<input bind:value={formData.name} />
+	<input bind:value={formData.email} />
+	<button type="submit">Submit</button>
+</form>
+```
+
+## Commands
+
+### Development
+
+```bash
+npm run dev              # Start dev server
+npm run validate         # Run all checks (format, lint, typecheck)
+```
+
+### Testing
+
+```bash
+npm run test:unit        # Unit tests (watch mode)
+npm run test:e2e         # E2E tests
+```
+
+### Code Quality
+
+```bash
+npm run format           # Format code with Prettier
+npm run lint:fix         # Fix ESLint issues
+npm run typecheck        # Check TypeScript types
+npm run check            # Check Svelte components
+```
+
+## Best Practices
+
+### When Modifying Code
+
+1. Read existing code first to understand patterns
+2. Maintain consistency with existing style
+3. Run `npm run validate` before committing
+4. Add comments for complex logic
+
+### When Adding Features
+
+1. Plan architecture before implementing
+2. Create reusable components and functions
+3. Define TypeScript types for all data structures
+4. Handle all edge cases and errors
+
+### When Debugging
+
+1. Check console for TypeScript, ESLint, runtime errors
+2. Check network tab for API requests
+3. Use Svelte DevTools to inspect state
+4. Check server logs in dev terminal
+
+## Security
+
+- Never commit `.env` files
+- Use environment variables for all secrets
+- Validate input on both client and server
+- Sanitize data before rendering (XSS protection)
+
+## Performance
+
+- Lazy load components when possible
+- Debounce search and input handlers
+- Use `$derived()` for expensive computations
+- Paginate large data lists
+
+## Accessibility
+
+- Use semantic HTML tags
+- Add ARIA labels for interactive elements
+- Ensure keyboard navigation works
+- Provide visible focus indicators
+
+## Git Commits
+
+### Commit Conventions
+
+1. **Language**: Always in English
+2. **Length**: Maximum 50 characters
+3. **Format**: Use Conventional Commits convention
+4. **Structure**: `type: short description`
+
+### Commit Types
+
+- `feat:` - new feature
+- `fix:` - bug fix
+- `refactor:` - code refactoring
+- `style:` - styling changes (CSS, formatting)
+- `docs:` - documentation changes
+- `test:` - adding or modifying tests
+- `chore:` - configuration, dependencies changes
+
+### Good Commit Examples
+
+```bash
+feat: add worklog drag and drop
+fix: resolve auth redirect issue
+refactor: extract Jira API logic
+style: update button hover states
+docs: update README with setup steps
+test: add unit tests for migration rules
+chore: update dependencies
+```
+
+### AI Rules for Commits
+
+**IMPORTANT**: After completing each task/prompt, the AI should:
+
+1. **Propose a commit message** following the above conventions
+2. **Check length** - maximum 50 characters
+3. **Use appropriate type** - feat, fix, refactor, etc.
+4. **Ask the user** if they want to add the commit
+
+Example proposal:
+
+```
+Changes have been applied. I suggest this commit:
+
+git add .
+git commit -m "feat: add migration rules UI"
+
+Would you like me to add this commit?
+```
+
+## Language
+
+- **Code**: English (variable names, functions, comments)
+- **UI**: Polish (interface text)
+- **User communication**: Polish
+- **Git commits**: English (max 50 characters)
