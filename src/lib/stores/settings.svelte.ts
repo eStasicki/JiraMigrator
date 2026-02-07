@@ -23,19 +23,18 @@ export interface Project {
 	jiraX: JiraConfig;
 	jiraY: JiraConfig;
 	rules: MigrationRule[];
+	timeFormat: 'hm' | 'decimal'; // Moved from global settings
 	createdAt: string;
 }
 
 export interface AppSettings {
 	projects: Project[];
 	activeProjectId: string | null;
-	timeFormat: 'hm' | 'decimal';
 }
 
 const defaultSettings: AppSettings = {
 	projects: [],
-	activeProjectId: null,
-	timeFormat: 'hm'
+	activeProjectId: null
 };
 
 const STORAGE_KEY = 'jira-migrator-settings-v2';
@@ -63,6 +62,7 @@ function createDefaultProject(name: string): Project {
 			tempoToken: ''
 		},
 		rules: [],
+		timeFormat: 'hm',
 		createdAt: new Date().toISOString()
 	};
 }
@@ -77,14 +77,24 @@ function createSettingsStore() {
 			try {
 				const parsed = JSON.parse(stored);
 				if (parsed.projects && Array.isArray(parsed.projects)) {
-					// Ensure all projects have rules array
+					// 1. Ensure all projects have rules array
+					// 2. Migrate timeFormat from global to per-project if needed
+					const globalTimeFormat = parsed.timeFormat || 'hm';
+
 					parsed.projects = parsed.projects.map((p: Project) => {
 						const proj = { ...p };
 						if (!proj.rules) {
 							proj.rules = [];
 						}
+						if (!proj.timeFormat) {
+							proj.timeFormat = globalTimeFormat;
+						}
 						return proj;
 					});
+
+					// Remove global timeFormat from state
+					delete parsed.timeFormat;
+
 					settings = parsed;
 				} else {
 					settings = defaultSettings;
@@ -246,14 +256,23 @@ function createSettingsStore() {
 		}
 	}
 
-	function setTimeFormat(format: 'hm' | 'decimal') {
-		settings.timeFormat = format;
-		saveToStorage();
+	function setTimeFormat(format: 'hm' | 'decimal', projectId?: string) {
+		const id = projectId || settings.activeProjectId;
+		if (!id) return;
+
+		const index = settings.projects.findIndex((p) => p.id === id);
+		if (index !== -1) {
+			settings.projects[index].timeFormat = format;
+			saveToStorage();
+		}
 	}
 
 	return {
 		get settings() {
 			return settings;
+		},
+		get timeFormat() {
+			return getActiveProject()?.timeFormat || 'hm';
 		},
 		addProject,
 		removeProject,

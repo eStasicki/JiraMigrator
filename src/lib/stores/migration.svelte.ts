@@ -319,7 +319,7 @@ function createMigrationStore() {
 	function getSelectedTotalTime(): string {
 		const selected = getSelectedWorklogs();
 		const totalSeconds = selected.reduce((sum, w) => sum + w.timeSpentSeconds, 0);
-		return formatTime(totalSeconds, settingsStore.settings.timeFormat);
+		return formatTime(totalSeconds, settingsStore.timeFormat);
 	}
 
 	// Child worklog selection functions
@@ -365,7 +365,7 @@ function createMigrationStore() {
 	function getSelectedChildrenTotalTime(parentId: string): string {
 		const selected = getSelectedChildrenInParent(parentId);
 		const totalSeconds = selected.reduce((sum, w) => sum + w.timeSpentSeconds, 0);
-		return formatTime(totalSeconds, settingsStore.settings.timeFormat);
+		return formatTime(totalSeconds, settingsStore.timeFormat);
 	}
 
 	async function removeSelectedChildrenFromParent(parentId: string) {
@@ -539,17 +539,17 @@ function createMigrationStore() {
 
 	function getInitialTime(parentId: string): string {
 		const parent = state.jiraYParents.find((p) => p.id === parentId);
-		if (!parent) return settingsStore.settings.timeFormat === 'decimal' ? '0' : '0m';
-		return formatTime(parent.initialTotalTimeSeconds || 0, settingsStore.settings.timeFormat);
+		if (!parent) return settingsStore.timeFormat === 'decimal' ? '0' : '0m';
+		return formatTime(parent.initialTotalTimeSeconds || 0, settingsStore.timeFormat);
 	}
 
 	function getOriginalTime(parentId: string): string {
 		const parent = state.jiraYParents.find((p) => p.id === parentId);
-		if (!parent) return settingsStore.settings.timeFormat === 'decimal' ? '0' : '0m';
+		if (!parent) return settingsStore.timeFormat === 'decimal' ? '0' : '0m';
 		const totalSeconds = parent.children
 			.filter((c) => !c.isNew)
 			.reduce((sum, c) => sum + c.timeSpentSeconds, 0);
-		return formatTime(totalSeconds, settingsStore.settings.timeFormat);
+		return formatTime(totalSeconds, settingsStore.timeFormat);
 	}
 
 	function getAddedTime(parentId: string): string {
@@ -558,18 +558,18 @@ function createMigrationStore() {
 
 	function getTotalTime(parentId: string): string {
 		const parent = state.jiraYParents.find((p) => p.id === parentId);
-		if (!parent) return settingsStore.settings.timeFormat === 'decimal' ? '0' : '0m';
+		if (!parent) return settingsStore.timeFormat === 'decimal' ? '0' : '0m';
 		const totalSeconds = parent.children.reduce((sum, c) => sum + c.timeSpentSeconds, 0);
-		return formatTime(totalSeconds, settingsStore.settings.timeFormat);
+		return formatTime(totalSeconds, settingsStore.timeFormat);
 	}
 
 	function getTotalChildrenTime(parentId: string): string {
 		const parent = state.jiraYParents.find((p) => p.id === parentId);
-		if (!parent) return settingsStore.settings.timeFormat === 'decimal' ? '0' : '0m';
+		if (!parent) return settingsStore.timeFormat === 'decimal' ? '0' : '0m';
 		const totalSeconds = parent.children
 			.filter((c) => c.isNew)
 			.reduce((sum, c) => sum + c.timeSpentSeconds, 0);
-		return formatTime(totalSeconds, settingsStore.settings.timeFormat);
+		return formatTime(totalSeconds, settingsStore.timeFormat);
 	}
 
 	function getTotalPendingMigration(): { count: number; time: string } {
@@ -580,7 +580,7 @@ function createMigrationStore() {
 			count += newChildren.length;
 			totalSeconds += newChildren.reduce((sum, c) => sum + c.timeSpentSeconds, 0);
 		}
-		return { count, time: formatTime(totalSeconds, settingsStore.settings.timeFormat) };
+		return { count, time: formatTime(totalSeconds, settingsStore.timeFormat) };
 	}
 
 	async function moveWorklogsToSource(worklogs: WorklogEntry[]) {
@@ -669,7 +669,7 @@ function createMigrationStore() {
 					children: newChildren,
 					totalTime: formatTime(
 						newChildren.reduce((sum, c) => sum + c.timeSpentSeconds, 0),
-						settingsStore.settings.timeFormat
+						settingsStore.timeFormat
 					)
 				};
 			});
@@ -683,7 +683,7 @@ function createMigrationStore() {
 			if (updates.timeSpentFormatted !== undefined) {
 				const seconds = parseFormattedTime(updates.timeSpentFormatted);
 				w.timeSpentSeconds = seconds;
-				w.timeSpentFormatted = formatTime(seconds, settingsStore.settings.timeFormat);
+				w.timeSpentFormatted = formatTime(seconds, settingsStore.timeFormat);
 			}
 		}
 
@@ -698,7 +698,7 @@ function createMigrationStore() {
 				if (updates.timeSpentFormatted !== undefined) {
 					const seconds = parseFormattedTime(updates.timeSpentFormatted);
 					c.timeSpentSeconds = seconds;
-					c.timeSpentFormatted = formatTime(seconds, settingsStore.settings.timeFormat);
+					c.timeSpentFormatted = formatTime(seconds, settingsStore.timeFormat);
 				}
 			}
 		}

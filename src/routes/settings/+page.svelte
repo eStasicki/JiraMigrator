@@ -25,7 +25,8 @@
 		Edit2,
 		X,
 		Wifi,
-		Loader2
+		Loader2,
+		Settings2
 	} from 'lucide-svelte';
 
 	// State
@@ -163,7 +164,8 @@
 					name: editingProject.name,
 					jiraX: { ...editingProject.jiraX },
 					jiraY: { ...editingProject.jiraY },
-					rules: [...(editingProject.rules || [])]
+					rules: [...(editingProject.rules || [])],
+					timeFormat: editingProject.timeFormat
 				});
 				showSavedMessage = true;
 				setTimeout(() => {
@@ -268,41 +270,6 @@
 			<p class="mt-2 text-slate-400">
 				Zarządzaj projektami i połączeniami między instancjami Jira.
 			</p>
-		</div>
-
-		<!-- Preferences -->
-		<div class="mb-8 rounded-xl border border-slate-700/50 bg-slate-800/30 p-6">
-			<h2 class="mb-4 text-lg font-semibold text-white">Preferencje wyświetlania</h2>
-			<div class="flex items-center justify-between gap-4">
-				<div>
-					<h3 class="font-medium text-slate-200">Format czasu</h3>
-					<p class="text-sm text-slate-500">
-						Wybierz jak chcesz widzieć i wpisywać czas pracy (np. 1h 30m vs 1.5)
-					</p>
-				</div>
-				<div class="flex rounded-lg bg-slate-900/50 p-1 ring-1 ring-slate-700/50">
-					<button
-						type="button"
-						onclick={() => settingsStore.setTimeFormat('hm')}
-						class="rounded-md px-4 py-1.5 text-xs font-bold transition-all
-							{settingsStore.settings.timeFormat === 'hm'
-							? 'bg-violet-500 text-white shadow-lg'
-							: 'text-slate-500 hover:text-slate-300'}"
-					>
-						Standard (h/m)
-					</button>
-					<button
-						type="button"
-						onclick={() => settingsStore.setTimeFormat('decimal')}
-						class="rounded-md px-4 py-1.5 text-xs font-bold transition-all
-							{settingsStore.settings.timeFormat === 'decimal'
-							? 'bg-violet-500 text-white shadow-lg'
-							: 'text-slate-500 hover:text-slate-300'}"
-					>
-						Dziesiętny (0.5)
-					</button>
-				</div>
-			</div>
 		</div>
 
 		<!-- Messages -->
@@ -720,6 +687,62 @@
 							isTestingY={testingConnectionY}
 							onSave={handleSaveProject}
 						/>
+
+						<!-- Display Preferences -->
+						<div class="mt-8 rounded-xl border border-slate-700/50 bg-slate-800/30 p-6">
+							<div class="mb-6 flex items-center gap-3">
+								<div
+									class="flex size-10 items-center justify-center rounded-lg bg-violet-500/20 text-violet-400"
+								>
+									<Settings2 class="size-5" />
+								</div>
+								<div>
+									<h2 class="text-lg font-semibold text-white">Preferencje wyświetlania</h2>
+									<p class="text-sm text-slate-500">
+										Dostosuj sposób wyświetlania danych dla tego projektu
+									</p>
+								</div>
+							</div>
+
+							<div
+								class="flex items-center justify-between gap-4 rounded-xl border border-slate-700/50 bg-slate-900/40 p-5"
+							>
+								<div>
+									<h3 class="font-medium text-slate-200">Format czasu</h3>
+									<p class="mt-1 text-xs text-slate-500">
+										Wybierz jak chcesz widzieć i wpisywać czas pracy (np. 1h 30m vs 1.5)
+									</p>
+								</div>
+								<div class="flex rounded-lg bg-slate-900/50 p-1 ring-1 ring-slate-700/50">
+									<button
+										type="button"
+										onclick={() => {
+											editingProject!.timeFormat = 'hm';
+											handleSaveProject();
+										}}
+										class="rounded-md px-4 py-1.5 text-xs font-bold transition-all
+											{editingProject.timeFormat === 'hm'
+											? 'bg-violet-500 text-white shadow-lg'
+											: 'text-slate-500 hover:text-slate-300'}"
+									>
+										Standard (h/m)
+									</button>
+									<button
+										type="button"
+										onclick={() => {
+											editingProject!.timeFormat = 'decimal';
+											handleSaveProject();
+										}}
+										class="rounded-md px-4 py-1.5 text-xs font-bold transition-all
+											{editingProject.timeFormat === 'decimal'
+											? 'bg-violet-500 text-white shadow-lg'
+											: 'text-slate-500 hover:text-slate-300'}"
+									>
+										Dziesiętny (0.5)
+									</button>
+								</div>
+							</div>
+						</div>
 
 						<div class="mt-6 flex items-center justify-end gap-3 border-t border-slate-700/50 pt-6">
 							{#if showSavedMessage}

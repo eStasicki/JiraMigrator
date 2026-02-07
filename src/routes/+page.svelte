@@ -266,7 +266,7 @@
 	{migrationProgress}
 />
 
-<div class="flex min-h-screen flex-col pt-0 lg:h-screen lg:overflow-hidden">
+<div class="flex min-h-screen flex-col pt-0 lg:h-[calc(100vh-5rem)] lg:min-h-0 lg:overflow-hidden">
 	<!-- Migration Message -->
 	{#if migrationMessage}
 		<div
@@ -300,9 +300,7 @@
 	{/if}
 
 	<!-- Main Content -->
-	<main
-		class="app-container app-page-padding flex flex-1 flex-col gap-6 px-0 lg:min-h-0 lg:overflow-hidden"
-	>
+	<main class="app-container flex min-h-0 flex-1 flex-col gap-4 px-0 pt-2 pb-6 lg:overflow-hidden">
 		{#if !activeProject}
 			<div class="flex flex-1 flex-col items-center justify-center gap-6 text-center">
 				<div
@@ -329,23 +327,12 @@
 			</div>
 		{:else}
 			<!-- Central Date Picker -->
-			<div class="relative z-30 flex flex-col items-center justify-center gap-2 py-1">
-				<div
-					class="flex items-center gap-3 rounded-xl border border-slate-700 bg-slate-800/80 p-1.5 shadow-lg backdrop-blur-md"
-				>
-					<div class="flex items-center gap-3 px-4 py-1">
-						<div
-							class="flex size-8 items-center justify-center rounded-lg bg-violet-500/20 text-violet-400"
-						>
-							<Clock class="size-4" />
-						</div>
-						<DatePicker
-							bind:selectedDate={migrationStore.state.jiraXDate}
-							onDateChange={handleJiraXDateChange}
-							label=""
-						/>
-					</div>
-				</div>
+			<div class="relative z-30 flex flex-col items-center justify-center gap-4 pb-6">
+				<DatePicker
+					bind:selectedDate={migrationStore.state.jiraXDate}
+					onDateChange={handleJiraXDateChange}
+					label=""
+				/>
 			</div>
 
 			<!-- Floating Action Button (Apply Rules) -->

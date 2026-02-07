@@ -298,7 +298,7 @@
 							onkeydown={handleKeydown}
 							oninput={handleTimeInput}
 							class="w-full rounded border border-slate-600 bg-slate-900 px-2 py-1.5 text-sm text-white focus:border-violet-500 focus:ring-1 focus:ring-violet-500 focus:outline-none"
-							placeholder={settingsStore.settings.timeFormat === 'decimal' ? '1.5' : '1h 30m'}
+							placeholder={settingsStore.timeFormat === 'decimal' ? '1.5' : '1h 30m'}
 						/>
 					</div>
 					<div class="flex justify-end gap-2 pt-1">

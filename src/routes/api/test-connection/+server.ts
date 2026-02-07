@@ -1,5 +1,6 @@
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
+import { getSupabaseServerClient } from '$lib/supabase';
 
 export interface ConnectionTestResult {
 	success: boolean;
@@ -8,7 +9,17 @@ export interface ConnectionTestResult {
 	serverInfo?: string;
 }
 
-export const POST: RequestHandler = async ({ request }) => {
+export const POST: RequestHandler = async (event) => {
+	const { request } = event;
+	const supabase = getSupabaseServerClient(event);
+	const {
+		data: { session }
+	} = await supabase.auth.getSession();
+
+	if (!session) {
+		return json({ success: false, message: 'Nieautoryzowany dostęp' }, { status: 401 });
+	}
+
 	try {
 		const data = await request.json();
 		let { baseUrl, email } = data;
