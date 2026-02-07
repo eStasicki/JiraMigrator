@@ -1,6 +1,7 @@
 import { SvelteSet, SvelteMap } from 'svelte/reactivity';
 import { formatTime } from '$lib/utils';
 import { settingsStore } from './settings.svelte';
+import { deleteWorklogInJiraY } from '$lib/api/jiraApi';
 
 export interface WorklogEntry {
 	id: string;
@@ -130,13 +131,72 @@ function createMigrationStore() {
 		state.jiraYMonth = date;
 	}
 
+	function resolveAlreadyMigrated() {
+		if (state.jiraXWorklogs.length === 0) return;
+
+		// 1. Collect all available "slots" in Jira Y
+		// pendingIds: IDs of worklogs that are currently in the "to be moved" state
+		const pendingOriginalIds = new SvelteSet<string>();
+		// historicalPool: Map of issueKey -> array of durations (seconds) present in Jira Y
+		const historicalPool = new SvelteMap<string, number[]>();
+
+		for (const parent of state.jiraYParents) {
+			for (const child of parent.children) {
+				if (child.isNew) {
+					if (child.originalWorklogId) {
+						pendingOriginalIds.add(String(child.originalWorklogId));
+					}
+				} else {
+					const match = child.comment?.match(/^\[([a-zA-Z]+-\d+)\]/);
+					if (match) {
+						const key = match[1];
+						const list = historicalPool.get(key) || [];
+						list.push(child.timeSpentSeconds);
+						historicalPool.set(key, list);
+					}
+				}
+			}
+		}
+
+		// 2. Greedy match Jira X worklogs
+		// We use a fresh copy of the pool to consume it during mapping
+		const availableHistorical = new SvelteMap<string, number[]>();
+		historicalPool.forEach((durations, key) => {
+			availableHistorical.set(key, [...durations]);
+		});
+
+		state.jiraXWorklogs = state.jiraXWorklogs.map((w) => {
+			// Priority A: It's manually moved/pending in this session
+			if (pendingOriginalIds.has(String(w.id))) {
+				return { ...w, isMoved: true };
+			}
+
+			// Priority B: It matches a historical entry in Jira Y
+			const durations = availableHistorical.get(w.issueKey);
+			if (durations && durations.length > 0) {
+				const matchIdx = durations.indexOf(w.timeSpentSeconds);
+				if (matchIdx !== -1) {
+					// Found a match! Consume it so another identical worklog won't match it
+					durations.splice(matchIdx, 1);
+					return { ...w, isMoved: true };
+				}
+			}
+
+			// No match found - it should be active in X
+			return { ...w, isMoved: false };
+		});
+	}
+
 	function setJiraXWorklogs(worklogs: WorklogEntry[]) {
 		state.jiraXWorklogs = worklogs;
 		state.selectedWorklogIds = new SvelteSet<string>();
+		// Reset isMoved status on new load
+		state.jiraXWorklogs.forEach((w) => (w.isMoved = false));
+		resolveAlreadyMigrated();
 	}
 
 	function setJiraYParents(parents: ParentTask[]) {
-		// Collect existing pending migrations (isNew children) grouped by parent issueKey
+		// 1. Identify current 'isNew' worklogs to preserve them
 		const pendingByParentKey = new SvelteMap<string, WorklogEntry[]>();
 		const existingPlaceholders = new SvelteMap<string, ParentTask>();
 
@@ -144,34 +204,56 @@ function createMigrationStore() {
 			const pending = p.children.filter((c) => c.isNew);
 			if (pending.length > 0) {
 				pendingByParentKey.set(p.issueKey, pending);
-				// If it has "Z reguły" status, it's likely a placeholder created by applyRules
 				if (p.status === 'Z reguły') {
 					existingPlaceholders.set(p.issueKey, p);
 				}
 			}
 		}
 
-		// Update state with new parents, but merge pending children
-		state.jiraYParents = parents.map((p) => {
+		// 2. Build the new parent list
+		const newParents = parents.map((p) => {
 			const initialTotalSeconds = p.children.reduce((sum, c) => sum + (c.timeSpentSeconds || 0), 0);
-			const pendingByRule = pendingByParentKey.get(p.issueKey) || [];
+			const localPending = pendingByParentKey.get(p.issueKey) || [];
+
+			// IMPORTANT: Filter out pending if they just became historical (migrated)
+			// This prevents duplicates after migration & refresh
+			const filteredPending = localPending.filter((pending) => {
+				// Check if this pending item matches any historical child in the NEW parent list
+				const historicalMatch = p.children.some(
+					(hist) =>
+						!hist.isNew &&
+						hist.timeSpentSeconds === pending.timeSpentSeconds &&
+						hist.comment?.startsWith(`[${pending.issueKey}]`)
+				);
+				return !historicalMatch;
+			});
 
 			return {
 				...p,
 				initialTotalTimeSeconds: initialTotalSeconds,
-				children: [...p.children, ...pendingByRule]
+				children: [...p.children, ...filteredPending]
 			};
 		});
 
-		// Add back any placeholder parents that weren't in the new list but have pending worklogs
-		for (const key of pendingByParentKey.keys()) {
-			if (!state.jiraYParents.find((p) => p.issueKey === key)) {
+		// 3. Add back any placeholders that don't exist in the new list but still have pending children
+		for (const [key, pendingItems] of pendingByParentKey.entries()) {
+			if (!newParents.some((np) => np.issueKey === key)) {
 				const placeholder = existingPlaceholders.get(key);
 				if (placeholder) {
-					state.jiraYParents.push(placeholder);
+					// We keep these pending items
+					if (pendingItems.length > 0) {
+						newParents.push({
+							...placeholder,
+							initialTotalTimeSeconds: placeholder.initialTotalTimeSeconds || 0,
+							children: pendingItems
+						});
+					}
 				}
 			}
 		}
+
+		state.jiraYParents = newParents;
+		resolveAlreadyMigrated();
 	}
 
 	function setLoadingX(loading: boolean) {
@@ -338,20 +420,12 @@ function createMigrationStore() {
 		}
 	}
 
-	function removeChildFromParent(parentId: string, worklogId: string) {
+	async function removeChildFromParent(parentId: string, worklogId: string) {
 		const parent = state.jiraYParents.find((p) => p.id === parentId);
 		if (parent) {
 			const worklog = parent.children.find((c) => c.id === worklogId);
 			if (worklog) {
-				parent.children = parent.children.filter((c) => c.id !== worklogId);
-
-				// Unmark the original in X column
-				if (worklog.originalWorklogId) {
-					const xIdx = state.jiraXWorklogs.findIndex((w) => w.id === worklog.originalWorklogId);
-					if (xIdx !== -1) {
-						state.jiraXWorklogs[xIdx] = { ...state.jiraXWorklogs[xIdx], isMoved: false };
-					}
-				}
+				await moveWorklogsToSource([worklog]);
 			}
 		}
 	}
@@ -365,18 +439,11 @@ function createMigrationStore() {
 		}
 	}
 
-	function removeParent(parentId: string) {
+	async function removeParent(parentId: string) {
 		const parent = state.jiraYParents.find((p) => p.id === parentId);
 		if (parent) {
-			for (const child of parent.children) {
-				// Unmark originals
-				if (child.originalWorklogId) {
-					const xIdx = state.jiraXWorklogs.findIndex((w) => w.id === child.originalWorklogId);
-					if (xIdx !== -1) {
-						state.jiraXWorklogs[xIdx] = { ...state.jiraXWorklogs[xIdx], isMoved: false };
-					}
-				}
-			}
+			// If removing a parent, move all its CHILDREN back to source (including deleting remote ones)
+			await moveWorklogsToSource(parent.children);
 			state.jiraYParents = state.jiraYParents.filter((p) => p.id !== parentId);
 		}
 	}
@@ -451,20 +518,50 @@ function createMigrationStore() {
 		return { count, time: formatTime(totalSeconds, settingsStore.settings.timeFormat) };
 	}
 
-	function moveWorklogsToSource(worklogs: WorklogEntry[]) {
-		const worklogIds = new Set(worklogs.map((w) => w.id));
+	async function moveWorklogsToSource(worklogs: WorklogEntry[]) {
+		const worklogIds = new SvelteSet(worklogs.map((w) => String(w.id)));
+		const activeProject = settingsStore.getActiveProject();
 
 		// Remove from all parents
 		for (const p of state.jiraYParents) {
-			p.children = p.children.filter((c) => !worklogIds.has(c.id));
+			const toDeleteRemotely = p.children.filter((c) => worklogIds.has(String(c.id)) && !c.isNew);
+
+			if (activeProject && toDeleteRemotely.length > 0) {
+				for (const wl of toDeleteRemotely) {
+					// This is a remote worklog, delete it from Jira Y
+					await deleteWorklogInJiraY(
+						activeProject.jiraY.baseUrl,
+						activeProject.jiraY.email,
+						activeProject.jiraY.apiToken,
+						String(wl.id),
+						p.issueKey,
+						activeProject.jiraY.tempoToken
+					);
+				}
+			}
+
+			p.children = p.children.filter((c) => !worklogIds.has(String(c.id)));
 		}
 
 		// Unmark originals in X
 		for (const w of worklogs) {
+			// 1. By originalWorklogId (for manually moved items in this session)
 			if (w.originalWorklogId) {
 				const xIdx = state.jiraXWorklogs.findIndex((xw) => xw.id === w.originalWorklogId);
 				if (xIdx !== -1) {
 					state.jiraXWorklogs[xIdx] = { ...state.jiraXWorklogs[xIdx], isMoved: false };
+					continue;
+				}
+			}
+
+			// 2. By Issue Key inside description (for already migrated tasks)
+			// We look for [ABC-123] pattern in the comment
+			const match = w.comment?.match(/^\[([a-zA-Z]+-\d+)\]/);
+			if (match) {
+				const originalKey = match[1];
+				const xIdxByKey = state.jiraXWorklogs.findIndex((xw) => xw.issueKey === originalKey);
+				if (xIdxByKey !== -1) {
+					state.jiraXWorklogs[xIdxByKey] = { ...state.jiraXWorklogs[xIdxByKey], isMoved: false };
 				}
 			}
 		}
@@ -548,10 +645,10 @@ function createMigrationStore() {
 
 		// Group worklogs by target parent key
 		const ruleMatches = new SvelteMap<string, WorklogEntry[]>();
-		const movedLogIds = new Set<string>();
+		const movedLogIds = new SvelteSet<string>();
 
 		state.jiraXWorklogs.forEach((worklog) => {
-			// Skip if already moved (avoid double moving if button clicked multiple times, though usually it's good to re-eval)
+			// Skip if already moved
 			if (worklog.isMoved) return;
 
 			for (const rule of activeProject.rules) {
@@ -559,32 +656,33 @@ function createMigrationStore() {
 
 				let matched = false;
 				if (rule.sourceType === 'task') {
-					if (worklog.issueKey === rule.sourceValue) {
-						matched = true;
-					}
+					if (worklog.issueKey === rule.sourceValue) matched = true;
 				} else if (rule.sourceType === 'label') {
-					if (worklog.labels?.includes(rule.sourceValue)) {
-						matched = true;
-					}
+					if (worklog.labels?.includes(rule.sourceValue)) matched = true;
 				} else if (rule.sourceType === 'type') {
-					if (worklog.issueType === rule.sourceValue) {
-						matched = true;
-					}
+					if (worklog.issueType === rule.sourceValue) matched = true;
 				}
 
 				if (matched) {
-					const existing = ruleMatches.get(rule.targetTaskKey) || [];
-					ruleMatches.set(rule.targetTaskKey, [
-						...existing,
-						{
-							...worklog,
-							isNew: true,
-							originalWorklogId: worklog.id,
-							id: `moved-${worklog.id}-${Date.now()}`
-						}
-					]);
-					movedLogIds.add(worklog.id);
-					break; // Stop at first matching rule
+					// Guard against adding the same worklog twice if it's already in Jira Y's current UI state
+					const isAlreadyInParent = state.jiraYParents.some((p) =>
+						p.children.some((c) => c.originalWorklogId === worklog.id)
+					);
+
+					if (!isAlreadyInParent) {
+						const existing = ruleMatches.get(rule.targetTaskKey) || [];
+						ruleMatches.set(rule.targetTaskKey, [
+							...existing,
+							{
+								...worklog,
+								isNew: true,
+								originalWorklogId: worklog.id,
+								id: `moved-${worklog.id}-${Date.now()}`
+							}
+						]);
+						movedLogIds.add(worklog.id);
+					}
+					break;
 				}
 			}
 		});

@@ -1,7 +1,7 @@
 /**
  * Jira & Tempo Cloud API client
  */
-import { formatSeconds, getLocalDateString, isJiraCloud } from '$lib/utils';
+import { formatSeconds, getLocalDateString } from '$lib/utils';
 
 export interface ConnectionTestResult {
 	success: boolean;
@@ -50,9 +50,9 @@ export async function fetchParentsFromJiraY(
 				body: JSON.stringify({
 					baseUrl,
 					email,
-					apiToken: tempoToken,
+					apiToken: tempoToken, // Pass Tempo token as apiToken for the proxy
 					isTempo: true,
-					endpoint: `/worklogs/user/${accountId}?from=${dateStr}&to=${dateStr}&limit=1000`,
+					endpoint: `/4/worklogs/user/${accountId}?from=${dateStr}&to=${dateStr}&limit=1000`,
 					method: 'GET'
 				})
 			});
@@ -369,51 +369,172 @@ export async function migrateWorklogsToJiraY(
 	baseUrl: string,
 	email: string,
 	apiToken: string,
-	migrations: { parentKey: string; children: any[] }[]
+	migrations: { parentKey: string; children: any[] }[],
+	tempoToken?: string
 ): Promise<{ success: boolean; migratedCount: number }> {
 	let migratedCount = 0;
 	try {
+		// 1. Get Account ID if using Tempo
+		let authorAccountId = '';
+		if (tempoToken) {
+			const myselfRes = await fetch('/api/jira/proxy', {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({
+					baseUrl,
+					email,
+					apiToken,
+					endpoint: '/rest/api/3/myself',
+					method: 'GET'
+				})
+			});
+			if (myselfRes.ok) {
+				const data = await myselfRes.json();
+				authorAccountId = data.accountId;
+			}
+		}
+
+		// 2. Fetch Work Attributes definitions (Reference)
+		let workAttributeDefinitions: any[] = [];
+		if (tempoToken) {
+			const attrsRes = await fetch('/api/jira/proxy', {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({
+					baseUrl,
+					apiToken: tempoToken,
+					isTempo: true,
+					endpoint: '/4/work-attributes',
+					method: 'GET'
+				})
+			});
+
+			if (attrsRes.ok) {
+				const attrsData = await attrsRes.json();
+				workAttributeDefinitions = attrsData.results || [];
+			}
+		}
+
 		for (const migration of migrations) {
-			for (const worklog of migration.children) {
-				const response = await fetch('/api/jira/proxy', {
+			// Resolve Issue ID and Summary for Tempo (required instead of Key)
+			let issueIdForTempo: number | undefined;
+			let parentSummary = '';
+
+			if (tempoToken) {
+				const issueRes = await fetch('/api/jira/proxy', {
 					method: 'POST',
 					headers: { 'Content-Type': 'application/json' },
 					body: JSON.stringify({
 						baseUrl,
 						email,
 						apiToken,
-						endpoint: `/rest/api/3/issue/${migration.parentKey}/worklog`,
-						method: 'POST',
-						body: {
-							timeSpentSeconds: worklog.timeSpentSeconds,
-							started: worklog.started
-								? `${worklog.started}T09:00:00.000+0000`
-								: new Date().toISOString(),
-							comment: isJiraCloud(baseUrl)
-								? {
-										type: 'doc',
-										version: 1,
-										content: [
-											{
-												type: 'paragraph',
-												content: [
-													{
-														type: 'text',
-														text:
-															worklog.comment ||
-															`Zmigrowano z ${worklog.issueKey}: ${worklog.issueSummary}`
-													}
-												]
-											}
-										]
-									}
-								: worklog.comment || `Zmigrowano z ${worklog.issueKey}: ${worklog.issueSummary}`
-						}
+						endpoint: `/rest/api/2/issue/${migration.parentKey}`,
+						method: 'GET'
 					})
 				});
+				if (issueRes.ok) {
+					const issueData = await issueRes.json();
+					issueIdForTempo = Number(issueData.id);
+					parentSummary = issueData.fields?.summary || '';
+				}
+			}
 
-				if (response.ok) {
+			// Prepare Attributes Payload for this specific parent
+			const attributesForThisMigration: any[] = [];
+			if (tempoToken && workAttributeDefinitions.length > 0) {
+				workAttributeDefinitions.forEach((attr: any) => {
+					if (attr.required) {
+						let valueToSend = 'Dev'; // Fallback
+						// Logic for Category based on Parent Summary
+						const isCategory = attr.name === 'Category' || attr.key === '_Category_';
+
+						if (isCategory && attr.values) {
+							const summaryLower = parentSummary.toLowerCase();
+							if (
+								summaryLower.includes('development') ||
+								summaryLower.includes('coding') ||
+								summaryLower.includes('dev')
+							) {
+								if (attr.values.includes('Coding')) valueToSend = 'Coding';
+								else if (attr.values.includes('Development')) valueToSend = 'Development';
+							} else if (
+								summaryLower.includes('communication') ||
+								summaryLower.includes('management')
+							) {
+								if (attr.values.includes('Communication & Management'))
+									valueToSend = 'Communication & Management';
+								else if (attr.values.includes('Communication')) valueToSend = 'Communication';
+							} else {
+								// Default fallback if no match
+								if (attr.values.length > 0) valueToSend = attr.values[0];
+							}
+						} else {
+							// Generic required attribute
+							if (attr.values && attr.values.length > 0) valueToSend = attr.values[0];
+						}
+
+						attributesForThisMigration.push({
+							key: attr.key,
+							value: valueToSend
+						});
+					}
+				});
+			}
+
+			for (const worklog of migration.children) {
+				let response;
+
+				if (tempoToken && authorAccountId && issueIdForTempo) {
+					// TEMPO MIGRATION
+					response = await fetch('/api/jira/proxy', {
+						method: 'POST',
+						headers: { 'Content-Type': 'application/json' },
+						body: JSON.stringify({
+							baseUrl,
+							apiToken: tempoToken,
+							isTempo: true,
+							endpoint: '/4/worklogs',
+							method: 'POST',
+							body: {
+								issueId: issueIdForTempo,
+								timeSpentSeconds: worklog.timeSpentSeconds, // Use actual time
+								startDate: worklog.started || new Date().toISOString().split('T')[0],
+								startTime: '09:00:00',
+								description: `[${worklog.issueKey}] ${worklog.comment || worklog.issueSummary}`,
+								authorAccountId: authorAccountId,
+								attributes:
+									attributesForThisMigration.length > 0 ? attributesForThisMigration : undefined
+							}
+						})
+					});
+				} else {
+					// NATIVE JIRA
+					response = await fetch('/api/jira/proxy', {
+						method: 'POST',
+						headers: { 'Content-Type': 'application/json' },
+						body: JSON.stringify({
+							baseUrl,
+							email,
+							apiToken,
+							endpoint: `/rest/api/2/issue/${migration.parentKey}/worklog?adjustEstimate=leave`,
+							method: 'POST',
+							body: {
+								timeSpentSeconds: worklog.timeSpentSeconds,
+								started: worklog.started
+									? `${worklog.started}T09:00:00.000+0000`
+									: new Date().toISOString(),
+								comment: `[${worklog.issueKey}] ${worklog.comment || worklog.issueSummary}`
+							}
+						})
+					});
+				}
+
+				if (response?.ok) {
 					migratedCount++;
+				} else {
+					if (response) {
+						console.error('Migration failed:', await response.text());
+					}
 				}
 			}
 		}
@@ -454,5 +575,47 @@ export async function testConnectionToTempo(
 		return await r.json();
 	} catch {
 		return { success: false, message: 'Błąd połączenia z Tempo' };
+	}
+}
+export async function deleteWorklogInJiraY(
+	baseUrl: string,
+	email: string,
+	apiToken: string,
+	worklogId: string,
+	issueKeyOrId?: string, // Required for native Jira
+	tempoToken?: string
+): Promise<boolean> {
+	try {
+		const isTempo = !!tempoToken;
+		const endpoint = isTempo
+			? `/4/worklogs/${worklogId}`
+			: `/rest/api/2/issue/${issueKeyOrId}/worklog/${worklogId}`;
+
+		console.log(`[JiraApi] Deleting worklog ${worklogId} from ${isTempo ? 'Tempo' : 'Jira'}...`);
+
+		const response = await fetch('/api/jira/proxy', {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify({
+				baseUrl,
+				email,
+				apiToken: isTempo ? tempoToken : apiToken,
+				isTempo,
+				endpoint,
+				method: 'DELETE'
+			})
+		});
+
+		if (!response.ok) {
+			const errorText = await response.text();
+			console.error(`[JiraApi] Delete failed (${response.status}):`, errorText);
+			return false;
+		}
+
+		console.log(`[JiraApi] Worklog ${worklogId} deleted successfully.`);
+		return true;
+	} catch (error) {
+		console.error('Delete worklog error:', error);
+		return false;
 	}
 }

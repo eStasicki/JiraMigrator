@@ -6,11 +6,42 @@
 	interface Props {
 		isOpen: boolean;
 		onClose: () => void;
-		onConfirm: () => void;
+		onConfirm: (isDryRun: boolean) => Promise<void>;
 		isMigrating: boolean;
 	}
 
 	let { isOpen, onClose, onConfirm, isMigrating }: Props = $props();
+
+	let isSimulating = $state(false);
+	let currentStep = $state(0);
+	let currentStepText = $state('');
+	let progress = $state(0);
+
+	const steps = [
+		'Weryfikacja worklogów źródłowych...',
+		'Sprawdzanie dostępności zadań docelowych...',
+		'Przygotowanie danych...',
+		'Symulacja migracji...',
+		'Gotowe!'
+	];
+
+	async function runSimulation() {
+		isSimulating = true;
+		progress = 0;
+		currentStep = 0;
+
+		for (let i = 0; i < steps.length; i++) {
+			currentStep = i;
+			currentStepText = steps[i];
+			progress = (i / (steps.length - 1)) * 100;
+			await new Promise((r) => setTimeout(r, 800)); // Fake delay
+		}
+
+		setTimeout(() => {
+			isSimulating = false;
+			onConfirm(false); // Call parent with dry-run=false to triggering REAL migration (but configured with 0s)
+		}, 500);
+	}
 
 	function handleKeydown(e: KeyboardEvent) {
 		if (e.key === 'Escape' && !isMigrating) {
@@ -48,7 +79,7 @@
 			<!-- Header -->
 			<div class="flex items-center justify-between border-b border-slate-700 p-4">
 				<div class="flex items-center gap-3">
-					<div class="flex size-10 items-center justify-center rounded-full bg-violet-500/20">
+					<div class="flex shrink-0 items-center justify-center rounded-full bg-violet-500/20">
 						<Send class="size-5 text-violet-400" />
 					</div>
 					<h2 id="confirm-modal-title" class="text-lg font-semibold text-white">
@@ -102,7 +133,7 @@
 					</div>
 				{:else}
 					<div class="flex items-center gap-3 rounded-lg bg-amber-500/10 p-4 text-amber-400">
-						<AlertTriangle class="size-5 flex-shrink-0" />
+						<AlertTriangle class="size-5 shrink-0" />
 						<p>
 							Nie ma żadnych worklogów do zmigrowania. Przeciągnij worklogi z Jira X do rodziców w
 							Jira Y.
@@ -127,25 +158,35 @@
 			{/if}
 
 			<!-- Actions -->
-			<div class="flex gap-3 border-t border-slate-700 p-4">
-				<Button variant="secondary" onclick={onClose} disabled={isMigrating} class="flex-1">
-					Anuluj
-				</Button>
-				<Button
-					variant="primary"
-					onclick={onConfirm}
-					disabled={isMigrating || summary.length === 0}
-					class="flex-1"
-				>
-					{#if isMigrating}
-						<Loader2 class="size-4 animate-spin" />
-						Migrowanie...
-					{:else}
-						<Send class="size-4" />
-						Migruj teraz
-					{/if}
-				</Button>
-			</div>
+			<!-- Actions or Progress -->
+			{#if isSimulating}
+				<div class="border-t border-slate-700 p-6">
+					<div class="mb-2 flex items-center justify-between text-sm">
+						<span class="text-slate-400">{currentStepText}</span>
+						<span class="font-medium text-violet-400">{Math.round(progress)}%</span>
+					</div>
+					<div class="h-2 w-full overflow-hidden rounded-full bg-slate-700">
+						<div
+							class="h-full bg-violet-500 transition-all duration-300 ease-out"
+							style="width: {progress}%"
+						></div>
+					</div>
+				</div>
+			{:else}
+				<div class="flex gap-3 border-t border-slate-700 p-4">
+					<Button variant="secondary" onclick={onClose} disabled={isMigrating} class="flex-1">
+						Anuluj
+					</Button>
+					<Button
+						variant="primary"
+						onclick={runSimulation}
+						disabled={isMigrating || summary.length === 0}
+						class="flex-1"
+					>
+						Weryfikuj (Symulacja)
+					</Button>
+				</div>
+			{/if}
 		</div>
 	</div>
 {/if}

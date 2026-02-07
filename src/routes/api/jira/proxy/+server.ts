@@ -20,7 +20,7 @@ export const POST: RequestHandler = async ({ request }) => {
 			// Tempo Cloud API - EU Instance focused (based on user's DevTools observation)
 			// We try api.eu.tempo.io for EU customers
 			const tempoHost = baseUrl.includes('.atlassian.net') ? 'api.eu.tempo.io' : 'api.tempo.io';
-			targetUrl = `https://${tempoHost}/4${endpoint.startsWith('/') ? endpoint : '/' + endpoint}`;
+			targetUrl = `https://${tempoHost}${endpoint.startsWith('/') ? endpoint : '/' + endpoint}`;
 			authHeader = `Bearer ${apiToken}`;
 		} else {
 			// standard Jira API
@@ -70,17 +70,22 @@ export const POST: RequestHandler = async ({ request }) => {
 			body: body ? JSON.stringify(body) : undefined
 		});
 
+		// Special handling for 204 No Content - must not have a body
+		if (response.status === 204) {
+			return new Response(null, { status: 204 });
+		}
+
 		const text = await response.text();
 		let data;
 		try {
-			data = JSON.parse(text);
+			data = text ? JSON.parse(text) : {};
 		} catch {
 			data = { message: text };
 		}
 
 		return json(data, { status: response.status });
-	} catch (error) {
+	} catch (error: any) {
 		console.error('Proxy error:', error);
-		return json({ error: 'Błąd proxy' }, { status: 500 });
+		return json({ error: 'Błąd proxy', details: error?.message }, { status: 500 });
 	}
 };

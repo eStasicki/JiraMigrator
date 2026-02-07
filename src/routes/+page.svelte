@@ -34,7 +34,11 @@
 	let showConfirmModal = $state(false);
 
 	async function loadJiraX() {
-		if (!activeProject) return;
+		if (!activeProject) {
+			console.log('[Page] loadJiraX: No active project');
+			return;
+		}
+		console.log('[Page] loadJiraX: Loading worklogs for', migrationStore.state.jiraXDate);
 		migrationStore.setLoadingX(true);
 		try {
 			const worklogs = await fetchWorklogsFromJiraX(
@@ -43,17 +47,21 @@
 				activeProject.jiraX.apiToken,
 				migrationStore.state.jiraXDate
 			);
+			console.log(`[Page] loadJiraX: Found ${worklogs.length} worklogs`);
 			migrationStore.setJiraXWorklogs(worklogs);
-			migrationStore.applyRules();
 		} catch (error) {
-			console.error('Error loading Jira X:', error);
+			console.error('[Page] Error loading Jira X:', error);
 		} finally {
 			migrationStore.setLoadingX(false);
 		}
 	}
 
 	async function loadJiraY() {
-		if (!activeProject) return;
+		if (!activeProject) {
+			console.log('[Page] loadJiraY: No active project');
+			return;
+		}
+		console.log('[Page] loadJiraY: Loading parents from Jira Y');
 		migrationStore.setLoadingY(true);
 		try {
 			const parents = await fetchParentsFromJiraY(
@@ -63,18 +71,18 @@
 				migrationStore.state.jiraXDate,
 				activeProject.jiraY.tempoToken
 			);
+			console.log(`[Page] loadJiraY: Found ${parents.length} parents`);
 			migrationStore.setJiraYParents(parents);
-			migrationStore.applyRules();
 		} catch (error) {
-			console.error('Error loading Jira Y:', error);
+			console.error('[Page] Error loading Jira Y:', error);
 		} finally {
 			migrationStore.setLoadingY(false);
 		}
 	}
 
-	function loadAllData() {
-		loadJiraX();
-		loadJiraY();
+	async function loadAllData() {
+		console.log('[Page] loadAllData triggered');
+		await Promise.all([loadJiraX(), loadJiraY()]);
 	}
 
 	function handleJiraXDateChange(date: Date) {
@@ -91,7 +99,17 @@
 		}
 	}
 
-	async function handleMigrate() {
+	async function handleMigrate(isDryRun: boolean = false) {
+		if (isDryRun) {
+			console.log('--- DRY RUN COMPLETED ---');
+			migrationMessage = {
+				type: 'success',
+				text: 'Symulacja zakończona powodzeniem! Dane są gotowe do migracji.'
+			};
+			showConfirmModal = false;
+			return;
+		}
+
 		if (!activeProject) return;
 		migrationStore.setMigrating(true);
 		migrationMessage = null;
@@ -107,7 +125,8 @@
 				activeProject.jiraY.baseUrl,
 				activeProject.jiraY.email,
 				activeProject.jiraY.apiToken,
-				migrations
+				migrations,
+				activeProject.jiraY.tempoToken
 			);
 
 			if (result.success) {
@@ -155,25 +174,25 @@
 	const jiraXName = $derived(activeProject?.jiraX?.name || 'Jira X');
 	const jiraYName = $derived(activeProject?.jiraY?.name || 'Jira Y');
 
-	// Track active project ID to reload data when it changes
-	let lastActiveProjectId = $state<string | null>(null);
+	// Track last loaded to avoid redundant triggers
+	let lastLoadedKey = $state<string>('');
 
 	$effect(() => {
+		// Only trigger on project ID change or initial load
 		const currentProjectId = activeProject?.id ?? null;
-		console.log('Project ID changed:', currentProjectId);
+		if (!currentProjectId) return;
 
-		// If project changed (not just on initial mount)
-		if (lastActiveProjectId !== null && lastActiveProjectId !== currentProjectId) {
-			// Clear current data and reload
-			migrationStore.clearAllData();
+		// We don't track date here anymore to avoid double-triggers
+		// with handleJiraXDateChange, but we handle the initial load.
+		if (lastLoadedKey !== currentProjectId) {
+			console.log('[Page] Project resolved/changed, performing initial load');
+			lastLoadedKey = currentProjectId;
 			loadAllData();
 		}
-
-		lastActiveProjectId = currentProjectId;
 	});
 
 	onMount(() => {
-		loadAllData();
+		// If project is already there, effect will catch it.
 	});
 
 	let jiraXDragOver = $state(false);
@@ -187,7 +206,7 @@
 		}
 	}
 
-	function handleJiraXDrop(e: DragEvent) {
+	async function handleJiraXDrop(e: DragEvent) {
 		e.preventDefault();
 		jiraXDragOver = false;
 		migrationStore.clearAllDragOver();
@@ -199,9 +218,9 @@
 			const droppedWorklog: WorklogEntry = JSON.parse(data);
 
 			if (dragType === 'multi' && migrationStore.getSelectedCount() > 0) {
-				migrationStore.moveWorklogsToSource(migrationStore.getSelectedWorklogs());
+				await migrationStore.moveWorklogsToSource(migrationStore.getSelectedWorklogs());
 			} else {
-				migrationStore.moveWorklogsToSource([droppedWorklog]);
+				await migrationStore.moveWorklogsToSource([droppedWorklog]);
 			}
 		}
 	}
@@ -512,7 +531,7 @@
 									Migrowanie...
 								{:else}
 									<Send class="size-5" />
-									Migruj!
+									Zmigruj worklogi
 								{/if}
 							</Button>
 						</div>
