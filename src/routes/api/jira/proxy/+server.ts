@@ -35,10 +35,12 @@ export const POST: RequestHandler = async (event) => {
 			authHeader = `Bearer ${apiToken}`;
 		} else {
 			// standard Jira API
-			if (!baseUrl || !baseUrl.startsWith('http')) {
-				return json({ error: 'Nieprawidłowy URL Jiry' }, { status: 400 });
+			if (!baseUrl) {
+				return json({ error: 'URL Jiry jest wymagany' }, { status: 400 });
 			}
-			const normalizedUrl = baseUrl.replace(/\/+$/, '');
+			const normalizedUrl = baseUrl.replace(/\/+$/, '').startsWith('http')
+				? baseUrl.replace(/\/+$/, '')
+				: `https://${baseUrl.replace(/\/+$/, '')}`;
 			const isCloud = normalizedUrl.includes('.atlassian.net');
 
 			// Auto-correct endpoint version for Jira Server/Data Center
@@ -59,7 +61,7 @@ export const POST: RequestHandler = async (event) => {
 			if (!isCloud) {
 				authHeader = `Bearer ${apiToken}`;
 			} else {
-				authHeader = `Basic ${Buffer.from(`${email}:${apiToken}`, 'latin1').toString('base64')}`;
+				authHeader = `Basic ${Buffer.from(`${email}:${apiToken}`).toString('base64')}`;
 			}
 		}
 
@@ -69,6 +71,7 @@ export const POST: RequestHandler = async (event) => {
 				Authorization: authHeader,
 				Accept: 'application/json',
 				'Content-Type': 'application/json',
+				'User-Agent': 'JiraMigrator-App',
 				// Some Tempo endpoints might need this
 				'X-Tempo-Api-Key': isTempo ? apiToken : ''
 			},
