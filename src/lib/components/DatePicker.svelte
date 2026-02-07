@@ -11,6 +11,7 @@
 
 	let showCalendar = $state(false);
 	let currentMonth = $state(new Date(selectedDate));
+	let containerRef: HTMLDivElement | null = $state(null);
 
 	const daysOfWeek = ['Pon', 'Wt', 'Śr', 'Czw', 'Pt', 'Sob', 'Nie'];
 	const monthNames = [
@@ -91,11 +92,32 @@
 	$effect(() => {
 		currentMonth = new Date(selectedDate);
 	});
+
+	// Handle click outside to close calendar
+	$effect(() => {
+		if (!showCalendar || !containerRef) return;
+
+		function handleClickOutside(event: MouseEvent) {
+			if (containerRef && !containerRef.contains(event.target as Node)) {
+				showCalendar = false;
+			}
+		}
+
+		// Small delay to prevent immediate closing when opening
+		const timeoutId = setTimeout(() => {
+			document.addEventListener('click', handleClickOutside);
+		}, 0);
+
+		return () => {
+			clearTimeout(timeoutId);
+			document.removeEventListener('click', handleClickOutside);
+		};
+	});
 </script>
 
 <svelte:window onkeydown={handleKeydown} />
 
-<div class="relative">
+<div class="relative" bind:this={containerRef}>
 	{#if label}
 		<label class="mb-2 block text-sm font-medium text-slate-400">{label}</label>
 	{/if}
