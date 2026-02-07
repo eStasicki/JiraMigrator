@@ -1,8 +1,9 @@
 <script lang="ts">
+	import { tooltip } from '$lib/actions/tooltip';
 	import type { Snippet } from 'svelte';
 
 	interface Props {
-		variant?: 'primary' | 'secondary' | 'ghost' | 'danger';
+		variant?: 'primary' | 'secondary' | 'ghost' | 'danger' | 'success';
 		size?: 'sm' | 'md' | 'lg';
 		disabled?: boolean;
 		type?: 'button' | 'submit' | 'reset';
@@ -34,7 +35,9 @@
 		ghost:
 			'bg-transparent text-slate-300 hover:bg-slate-800 hover:text-white disabled:text-slate-600 disabled:hover:bg-transparent',
 		danger:
-			'bg-linear-to-r from-red-600 to-rose-600 text-white hover:from-red-500 hover:to-rose-500 shadow-lg shadow-red-500/25 disabled:bg-slate-700 disabled:from-slate-700 disabled:to-slate-700 disabled:text-slate-500 disabled:shadow-none'
+			'bg-linear-to-r from-red-600 to-rose-600 text-white hover:from-red-500 hover:to-rose-500 shadow-lg shadow-red-500/25 disabled:bg-slate-700 disabled:from-slate-700 disabled:to-slate-700 disabled:text-slate-500 disabled:shadow-none',
+		success:
+			'bg-linear-to-r from-emerald-600 to-teal-600 text-white hover:from-emerald-500 hover:to-teal-500 shadow-lg shadow-emerald-500/25 disabled:bg-slate-700 disabled:from-slate-700 disabled:to-slate-700 disabled:text-slate-500 disabled:shadow-none'
 	};
 
 	const sizeClasses = {
@@ -48,7 +51,7 @@
 	{type}
 	{disabled}
 	{onclick}
-	{title}
+	use:tooltip={title}
 	class="{baseClasses} {variantClasses[variant]} {sizeClasses[size]} {className}"
 >
 	{@render children()}

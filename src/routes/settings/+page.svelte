@@ -11,6 +11,7 @@
 	import Card from '$lib/components/Card.svelte';
 	import RulesSection from '$lib/components/RulesSection.svelte';
 	import ConfirmModal from '$lib/components/ConfirmModal.svelte';
+	import InfoModal from '$lib/components/InfoModal.svelte';
 	import {
 		Save,
 		RotateCcw,
@@ -39,6 +40,9 @@
 	let showDeleteModal = $state(false);
 	let showResetModal = $state(false);
 	let projectToDelete = $state<string | null>(null);
+
+	// Info modal state
+	let showApiTokenHelp = $state(false);
 
 	// Connection test state
 	let testingConnectionX = $state(false);
@@ -84,6 +88,9 @@
 		}
 		if (clone.jiraY.baseUrl && clone.jiraY.email && clone.jiraY.apiToken) {
 			handleTestConnectionY();
+		}
+		if (clone.jiraY.baseUrl && clone.jiraY.tempoToken) {
+			handleTestTempoY();
 		}
 	}
 
@@ -234,7 +241,8 @@
 			editingProject.jiraY.name &&
 			editingProject.jiraY.baseUrl &&
 			editingProject.jiraY.email &&
-			editingProject.jiraY.apiToken
+			editingProject.jiraY.apiToken &&
+			editingProject.jiraY.tempoToken
 		);
 	}
 
@@ -294,20 +302,6 @@
 						Dziesiętny (0.5)
 					</button>
 				</div>
-			</div>
-		</div>
-
-		<!-- Security Notice -->
-		<div
-			class="mb-8 flex items-start gap-3 rounded-xl border border-amber-500/30 bg-amber-500/10 p-4"
-		>
-			<AlertTriangle class="mt-0.5 size-5 shrink-0 text-amber-400" />
-			<div>
-				<h3 class="font-semibold text-amber-300">Bezpieczeństwo danych</h3>
-				<p class="mt-1 text-sm text-amber-200/80">
-					Wszystkie dane uwierzytelniające są przechowywane wyłącznie w localStorage Twojej
-					przeglądarki. Nigdy nie są wysyłane do żadnego serwera zewnętrznego.
-				</p>
 			</div>
 		</div>
 
@@ -516,12 +510,17 @@
 										placeholder="Twój API token z Atlassian"
 										required
 										error={!editingProject.jiraX.apiToken ? 'To pole jest wymagane' : ''}
+										onInfoClick={() => (showApiTokenHelp = true)}
 									/>
 
 									<!-- Test Connection Button -->
 									<div class="border-t border-slate-700/50 pt-4">
 										<Button
-											variant="secondary"
+											variant={connectionTestResultX?.success
+												? 'success'
+												: connectionTestResultX?.success === false
+													? 'danger'
+													: 'secondary'}
 											size="sm"
 											onclick={handleTestConnectionX}
 											disabled={testingConnectionX ||
@@ -529,31 +528,31 @@
 												!editingProject?.jiraX.email ||
 												!editingProject?.jiraX.apiToken}
 											class="w-full"
+											title={connectionTestResultX?.success ? `Połączono z: API Token` : undefined}
 										>
 											{#if testingConnectionX}
 												<Loader2 class="size-4 animate-spin" />
 												Testowanie...
+											{:else if connectionTestResultX?.success}
+												<CheckCircle class="size-4" />
+												Połączono
+											{:else if connectionTestResultX?.success === false}
+												<AlertTriangle class="size-4" />
+												Błąd połączenia
 											{:else}
 												<Wifi class="size-4" />
 												Test połączenia
 											{/if}
 										</Button>
 
-										{#if connectionTestResultX}
+										{#if connectionTestResultX && !connectionTestResultX.success}
 											<div
-												class="mt-3 flex items-start gap-2 rounded-lg p-3 text-sm
-													{connectionTestResultX.success
-													? 'bg-emerald-500/10 text-emerald-400'
-													: 'bg-red-500/10 text-red-400'}"
+												class="mt-3 flex items-start gap-2 rounded-lg bg-red-500/10 p-3 text-sm text-red-400"
 											>
-												{#if connectionTestResultX.success}
-													<CheckCircle class="mt-0.5 size-4 shrink-0" />
-												{:else}
-													<AlertTriangle class="mt-0.5 size-4 shrink-0" />
-												{/if}
+												<AlertTriangle class="mt-0.5 size-4 shrink-0" />
 												<div>
 													<p class="font-medium">{connectionTestResultX.message}</p>
-													{#if connectionTestResultX.success && connectionTestResultX.serverInfo}
+													{#if connectionTestResultX.serverInfo}
 														<p class="mt-1 text-xs opacity-80">
 															Serwer: {connectionTestResultX.serverInfo}
 														</p>
@@ -602,6 +601,7 @@
 										placeholder="Twój API token z Atlassian"
 										required
 										error={!editingProject.jiraY.apiToken ? 'To pole jest wymagane' : ''}
+										onInfoClick={() => (showApiTokenHelp = true)}
 									/>
 									<Input
 										id="jiraY-tempo-token"
@@ -609,13 +609,19 @@
 										type="password"
 										bind:value={editingProject.jiraY.tempoToken}
 										placeholder="Twój API token z Tempo"
+										required
+										error={!editingProject.jiraY.tempoToken ? 'To pole jest wymagane' : ''}
 									/>
 
 									<!-- Test Connection Buttons -->
 									<div class="space-y-3 border-t border-slate-700/50 pt-4">
 										<div class="grid grid-cols-2 gap-3">
 											<Button
-												variant="secondary"
+												variant={connectionTestResultY?.success
+													? 'success'
+													: connectionTestResultY?.success === false
+														? 'danger'
+														: 'secondary'}
 												size="sm"
 												onclick={handleTestConnectionY}
 												disabled={testingConnectionY ||
@@ -623,10 +629,19 @@
 													!editingProject?.jiraY.email ||
 													!editingProject?.jiraY.apiToken}
 												class="w-full"
+												title={connectionTestResultY?.success
+													? `Połączono z: Jira API Token`
+													: undefined}
 											>
 												{#if testingConnectionY}
 													<Loader2 class="size-4 animate-spin" />
 													Jira...
+												{:else if connectionTestResultY?.success}
+													<CheckCircle class="size-4" />
+													Połączono
+												{:else if connectionTestResultY?.success === false}
+													<AlertTriangle class="size-4" />
+													Błąd
 												{:else}
 													<Wifi class="size-4" />
 													Test Jira
@@ -634,57 +649,56 @@
 											</Button>
 
 											<Button
-												variant="secondary"
+												variant={connectionTestResultTempoY?.success === true
+													? 'success'
+													: connectionTestResultTempoY?.success === false
+														? 'danger'
+														: 'secondary'}
 												size="sm"
 												onclick={handleTestTempoY}
 												disabled={testingTempoY ||
 													!editingProject?.jiraY.baseUrl ||
 													!editingProject?.jiraY.tempoToken}
-												class="w-full border-emerald-500/30 hover:bg-emerald-500/10"
+												class="w-full"
+												title={connectionTestResultTempoY?.success === true
+													? `Połączono z: Tempo API Token`
+													: undefined}
 											>
 												{#if testingTempoY}
 													<Loader2 class="size-4 animate-spin" />
 													Tempo...
-												{:else}
+												{:else if connectionTestResultTempoY?.success === true}
 													<CheckCircle class="size-4" />
+													Połączono
+												{:else if connectionTestResultTempoY?.success === false}
+													<AlertTriangle class="size-4" />
+													Błąd
+												{:else}
+													<Wifi class="size-4" />
 													Test Tempo
 												{/if}
 											</Button>
 										</div>
 
-										{#if connectionTestResultY}
+										{#if connectionTestResultY && !connectionTestResultY.success}
 											<div
-												class="flex items-start gap-2 rounded-lg p-3 text-sm
-													{connectionTestResultY.success
-													? 'bg-emerald-500/10 text-emerald-400'
-													: 'bg-red-500/10 text-red-400'}"
+												class="flex items-start gap-2 rounded-lg bg-red-500/10 p-3 text-sm text-red-400"
 											>
-												{#if connectionTestResultY.success}
-													<CheckCircle class="mt-0.5 size-4 shrink-0" />
-												{:else}
-													<AlertTriangle class="mt-0.5 size-4 shrink-0" />
-												{/if}
+												<AlertTriangle class="mt-0.5 size-4 shrink-0" />
 												<div>
 													<p class="font-medium">{connectionTestResultY.message}</p>
 												</div>
 											</div>
 										{/if}
 
-										{#if connectionTestResultTempoY}
+										{#if connectionTestResultTempoY && !connectionTestResultTempoY.success}
 											<div
-												class="flex items-start gap-2 rounded-lg p-3 text-sm
-													{connectionTestResultTempoY.success
-													? 'border border-emerald-500/30 bg-emerald-500/20 text-emerald-400'
-													: 'bg-red-500/10 text-red-400'}"
+												class="flex items-start gap-2 rounded-lg bg-red-500/10 p-3 text-sm text-red-400"
 											>
-												{#if connectionTestResultTempoY.success}
-													<CheckCircle class="mt-0.5 size-4 shrink-0" />
-												{:else}
-													<AlertTriangle class="mt-0.5 size-4 shrink-0" />
-												{/if}
+												<AlertTriangle class="mt-0.5 size-4 shrink-0" />
 												<div>
 													<p class="font-medium">Tempo: {connectionTestResultTempoY.message}</p>
-													{#if connectionTestResultTempoY.success && connectionTestResultTempoY.serverInfo}
+													{#if connectionTestResultTempoY.serverInfo}
 														<p class="mt-1 text-xs opacity-80">
 															{connectionTestResultTempoY.serverInfo}
 														</p>
@@ -695,46 +709,6 @@
 									</div>
 								</div>
 							</Card>
-						</div>
-
-						<!-- API Token Help -->
-						<div class="mt-6 rounded-xl border border-slate-700/50 bg-slate-900/50 p-4">
-							<div class="flex items-start gap-3">
-								<Server class="mt-0.5 size-5 text-violet-400" />
-								<div>
-									<h3 class="font-semibold text-white">Jak uzyskać API Token?</h3>
-									<ol class="mt-2 list-inside list-decimal space-y-1 text-sm text-slate-400">
-										<li>
-											Przejdź do <a
-												href="https://id.atlassian.com/manage-profile/security/api-tokens"
-												target="_blank"
-												rel="noopener noreferrer"
-												class="text-violet-400 hover:underline">Atlassian API Tokens</a
-											>
-										</li>
-										<li>Kliknij "Create API token"</li>
-										<li>Nadaj tokenowi nazwę (np. "Jira Migrator")</li>
-										<li>Skopiuj wygenerowany token</li>
-									</ol>
-									<div class="mt-4 border-t border-slate-700/50 pt-3">
-										<p class="text-xs font-semibold tracking-wider text-slate-300 uppercase">
-											Jira Server / Data Center:
-										</p>
-										<p class="mt-1 text-sm text-slate-400">
-											W przypadku instancji lokalnej (nie atlassian.net):
-										</p>
-										<ul class="mt-1 list-inside list-disc space-y-1 text-sm text-slate-400">
-											<li>
-												W polu <strong>Email</strong> wpisz swoją nazwę użytkownika (username)
-											</li>
-											<li>
-												W polu <strong>API Token</strong> wpisz swoje hasło lub wygenerowany
-												<strong>Personal Access Token (PAT)</strong>
-											</li>
-										</ul>
-									</div>
-								</div>
-							</div>
 						</div>
 
 						<!-- Migration Rules -->
@@ -804,6 +778,78 @@
 			<Button variant="ghost" onclick={() => goto('/')}>← Wróć do migracji</Button>
 		</div>
 	</div>
+
+	<!-- API Token Info Modal -->
+	<InfoModal
+		isOpen={showApiTokenHelp}
+		title="Jak uzyskać API Token?"
+		onClose={() => (showApiTokenHelp = false)}
+	>
+		<div class="space-y-4">
+			<!-- Security Notice -->
+			<div class="flex items-start gap-3 rounded-xl border border-amber-500/30 bg-amber-500/10 p-4">
+				<AlertTriangle class="mt-0.5 size-5 shrink-0 text-amber-400" />
+				<div>
+					<h3 class="font-semibold text-amber-300">Bezpieczeństwo danych</h3>
+					<p class="mt-1 text-sm text-amber-200/80">
+						Wszystkie dane uwierzytelniające są przechowywane wyłącznie w localStorage Twojej
+						przeglądarki. Nigdy nie są wysyłane do żadnego serwera zewnętrznego.
+					</p>
+				</div>
+			</div>
+
+			<div>
+				<h4 class="mb-2 font-medium text-white">Jira Cloud (atlassian.net)</h4>
+				<ol
+					class="ml-1 list-inside list-decimal space-y-2 border-l-2 border-slate-700 pl-2 text-sm text-slate-400"
+				>
+					<li>
+						Przejdź do strony zarządzania tokenami: <br />
+						<a
+							href="https://id.atlassian.com/manage-profile/security/api-tokens"
+							target="_blank"
+							rel="noopener noreferrer"
+							class="mt-1 inline-flex items-center gap-1 text-violet-400 hover:text-violet-300 hover:underline"
+						>
+							id.atlassian.com/manage-profile/security/api-tokens
+							<ChevronRight class="size-3" />
+						</a>
+					</li>
+					<li>Kliknij przycisk <strong>"Create API token"</strong>.</li>
+					<li>Nadaj tokenowi łatwą do rozpoznania nazwę (np. "Jira Migrator").</li>
+					<li>Skopiuj wygenerowany token i wklej go w polu formularza.</li>
+				</ol>
+			</div>
+
+			<div class="mt-4 border-t border-slate-800 pt-4">
+				<h4 class="mb-2 font-medium text-white">Jira Server / Data Center</h4>
+				<div class="mb-3 rounded-lg border border-amber-500/20 bg-amber-500/10 p-3">
+					<p class="text-sm text-amber-200/80">
+						W przypadku własnej instancji Jira (on-premise), zamiast hasła użyj Personal Access
+						Token (PAT) dla większego bezpieczeństwa.
+					</p>
+				</div>
+				<ul
+					class="ml-1 list-inside list-disc space-y-2 border-l-2 border-slate-700 pl-2 text-sm text-slate-400"
+				>
+					<li>Zaloguj się do swojej instancji Jira.</li>
+					<li>
+						Kliknij w swój awatar (Profile) &rarr; <strong>Profile</strong>.
+					</li>
+					<li>
+						W menu wybierz <strong>Personal Access Tokens</strong>.
+					</li>
+					<li>
+						Utwórz nowy token i użyj go w polu <strong>API Token</strong>.
+					</li>
+				</ul>
+				<p class="mt-3 text-xs text-slate-500 italic">
+					Uwaga: Jeśli Twoja organizacja nie obsługuje PAT, w polu API Token możesz wpisać swoje
+					zwykłe hasło do konta, jednak zalecamy użycie tokenu.
+				</p>
+			</div>
+		</div>
+	</InfoModal>
 </div>
 
 <!-- Delete Project Modal -->

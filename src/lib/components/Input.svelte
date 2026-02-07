@@ -1,4 +1,6 @@
 <script lang="ts">
+	import { Info } from 'lucide-svelte';
+
 	interface Props {
 		label: string;
 		type?: 'text' | 'email' | 'password' | 'url';
@@ -8,6 +10,7 @@
 		id: string;
 		error?: string;
 		onchange?: (value: string) => void;
+		onInfoClick?: () => void;
 	}
 
 	let {
@@ -18,7 +21,8 @@
 		required = false,
 		id,
 		error = '',
-		onchange
+		onchange,
+		onInfoClick
 	}: Props = $props();
 
 	function handleInput(e: Event) {
@@ -29,12 +33,24 @@
 </script>
 
 <div class="space-y-1.5">
-	<label for={id} class="block text-sm font-medium text-slate-300">
-		{label}
-		{#if required}
-			<span class="text-rose-400">*</span>
+	<div class="flex items-center justify-between">
+		<label for={id} class="block text-sm font-medium text-slate-300">
+			{label}
+			{#if required}
+				<span class="text-rose-400">*</span>
+			{/if}
+		</label>
+		{#if onInfoClick}
+			<button
+				type="button"
+				onclick={onInfoClick}
+				class="text-slate-400 transition-colors hover:text-violet-400"
+				title="Więcej informacji"
+			>
+				<Info class="size-4" />
+			</button>
 		{/if}
-	</label>
+	</div>
 	<input
 		{id}
 		{type}
