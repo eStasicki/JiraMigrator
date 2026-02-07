@@ -25,7 +25,6 @@
 			error = authError.message;
 			loading = false;
 		} else {
-			console.log('Login success, redirecting...');
 			goto('/');
 		}
 	}
@@ -61,10 +60,10 @@
 			<form onsubmit={handleFormSubmit} class="space-y-4">
 				<Input
 					id="email"
-					label="Login / Email"
-					type="text"
+					label="Adres email"
+					type="email"
 					bind:value={email}
-					placeholder="estasicki lub email"
+					placeholder="np. jan.kowalski@example.com"
 					required
 				/>
 				<Input
@@ -149,11 +148,5 @@
 				</button>
 			</div>
 		</Card>
-
-		<div class="mt-8 text-center">
-			<a href="/" class="text-sm text-slate-500 transition-colors hover:text-slate-300">
-				← Wróć do strony głównej
-			</a>
-		</div>
 	</div>
 </div>

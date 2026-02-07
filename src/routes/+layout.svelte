@@ -45,7 +45,6 @@
 						const sanitizedCurrent = settingsStore.sanitizeSettingsForCloud(currentSettings);
 
 						if (JSON.stringify(sanitizedCurrent) !== JSON.stringify(cloudSettings)) {
-							console.log('Syncing settings from cloud...');
 							settingsStore.syncFromCloud(cloudSettings);
 						}
 					});

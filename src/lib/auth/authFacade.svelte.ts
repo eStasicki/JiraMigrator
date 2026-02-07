@@ -51,24 +51,46 @@ function createAuthFacade() {
 		});
 	}
 
+	let isFetchingProfile = false;
+
 	async function fetchProfile(userId: string) {
-		console.log('AuthFacade: fetchProfile started for', userId);
+		if (isFetchingProfile) return;
+		isFetchingProfile = true;
+
+		const MAX_RETRIES = 2;
+		let attempt = 0;
+
 		try {
-			const query = supabase.from('profiles').select('*').eq('id', userId).single();
-			const { data, error } = await requestWithTimeout(query, 5000, 'fetchProfile');
+			while (attempt < MAX_RETRIES) {
+				try {
+					const query = supabase.from('profiles').select('*').eq('id', userId).single();
+					const { data, error } = await requestWithTimeout(query, 15000, 'fetchProfile');
 
-			console.log('AuthFacade: fetchProfile result', { data, error });
+					if (error) {
+						// PostgREST error for "no rows found" is PGRST116
+						if (error.code === 'PGRST116') {
+							// Profile doesn't exist yet, which is fine for first-time users
+							return;
+						}
+						throw error;
+					}
 
-			if (!error && data) {
-				state.profile = data as Profile;
-			} else {
-				console.warn('AuthFacade: fetchProfile failed or no data', error);
+					if (data) {
+						state.profile = data as Profile;
+						return; // Success
+					}
+				} catch (e) {
+					attempt++;
+					if (attempt >= MAX_RETRIES) {
+						console.error(`AuthFacade: fetchProfile failed after ${MAX_RETRIES} attempts:`, e);
+					} else {
+						// Wait a bit before retry
+						await new Promise((resolve) => setTimeout(resolve, 1000 * attempt));
+					}
+				}
 			}
-		} catch (e) {
-			console.error('AuthFacade: fetchProfile exception', e);
-			// If we timeout or fail, we stop loading
 		} finally {
-			console.log('AuthFacade: fetchProfile completed');
+			isFetchingProfile = false;
 		}
 	}
 
@@ -76,14 +98,11 @@ function createAuthFacade() {
 	// Initialize state
 	// Initialize state
 	if (browser) {
-		console.log('AuthFacade: Initializing in browser...');
-
 		// Note: We removed the global safety timeout because individual requests now have timeouts.
 
 		supabase.auth
 			.getSession()
 			.then(async ({ data: { session }, error }) => {
-				console.log('AuthFacade: getSession result', { session: !!session, error });
 				if (error) {
 					console.error('AuthFacade: getSession error', error);
 				}
@@ -91,15 +110,13 @@ function createAuthFacade() {
 				try {
 					state.session = session;
 					state.user = session?.user ?? null;
+					state.isLoading = false; // Move this BEFORE fetching profile to unblock UI
+
 					if (state.user) {
-						console.log('AuthFacade: Fetching profile for user', state.user.id);
-						await fetchProfile(state.user.id);
-						console.log('AuthFacade: Profile fetched');
+						fetchProfile(state.user.id);
 					}
 				} catch (e) {
 					console.error('AuthFacade: Error in getSession processing', e);
-				} finally {
-					console.log('AuthFacade: Setting isLoading = false (getSession)');
 					state.isLoading = false;
 				}
 			})
@@ -109,27 +126,23 @@ function createAuthFacade() {
 			});
 
 		supabase.auth.onAuthStateChange(async (event, session) => {
-			console.log('AuthFacade: onAuthStateChange event:', event, { session: !!session });
 			try {
 				state.session = session;
 				state.user = session?.user ?? null;
-				console.log('AuthFacade: Current user state:', state.user ? state.user.id : 'null');
+
+				// Ensure loading is off if we resolved a session/user change
+				if (state.isLoading) {
+					state.isLoading = false;
+				}
 
 				if (state.user) {
-					// Only fetch profile if not already present or if distinct user?
-					// For now keep it simple but safe
-					await fetchProfile(state.user.id);
+					fetchProfile(state.user.id);
 				} else {
 					state.profile = null;
 				}
 			} catch (e) {
 				console.error('AuthFacade: Error in onAuthStateChange processing', e);
-			} finally {
-				// Only turn off loading if it was loading
-				if (state.isLoading) {
-					console.log('AuthFacade: Setting isLoading = false (onAuthStateChange)');
-					state.isLoading = false;
-				}
+				state.isLoading = false;
 			}
 		});
 	}
@@ -138,11 +151,8 @@ function createAuthFacade() {
 		state.isLoading = true;
 		state.error = null;
 
-		// Support simple username login for development
-		const finalEmail = email.includes('@') ? email : `${email}@local.test`;
-
 		const { data, error } = await supabase.auth.signInWithPassword({
-			email: finalEmail,
+			email,
 			password
 		});
 		if (error) {
@@ -174,14 +184,6 @@ function createAuthFacade() {
 	async function updateProfile(updates: Partial<Profile>) {
 		if (!state.user) return { error: new Error('Not authenticated') };
 
-		console.log('AuthFacade: updateProfile called with', Object.keys(updates));
-		if (updates.settings) {
-			console.log(
-				'AuthFacade: updating settings payload size:',
-				JSON.stringify(updates.settings).length
-			);
-		}
-
 		// Do not block UI with global loading state for background updates
 		// state.isLoading = true;
 		try {
@@ -196,15 +198,12 @@ function createAuthFacade() {
 				.single();
 
 			// Use a slightly longer timeout for writes
-			const { data, error } = await requestWithTimeout(query, 10000, 'updateProfile');
-
-			console.log('AuthFacade: updateProfile response', { data: !!data, error });
+			const { data, error } = await requestWithTimeout(query, 15000, 'updateProfile');
 
 			if (error) {
 				console.error('AuthFacade: updateProfile failed', error);
 				state.error = error.message;
 			} else {
-				console.log('AuthFacade: updateProfile success, updating state');
 				state.profile = data as Profile;
 			}
 			return { data, error };

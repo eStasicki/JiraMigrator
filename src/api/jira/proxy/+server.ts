@@ -31,7 +31,6 @@ export const POST: RequestHandler = async ({ request }) => {
 		}
 
 		targetUrl = targetUrl.replace(/\s/g, '%20');
-		console.log(`[Proxy] ${method} ${targetUrl} (Tempo: ${isTempo})`);
 
 		const response = await fetch(targetUrl, {
 			method,

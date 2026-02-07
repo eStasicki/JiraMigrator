@@ -27,7 +27,7 @@
 				activeProject.jiraY.apiToken,
 				query
 			);
-			console.log('DEBUG MODAL: API Results:', results);
+
 			migrationStore.setSearchResults(results);
 		} finally {
 			migrationStore.setIsSearching(false);

@@ -37,10 +37,6 @@ export const POST: RequestHandler = async ({ request }) => {
 				finalEndpoint = endpoint
 					.replace('/rest/api/3/search/jql', '/rest/api/2/search')
 					.replace('/rest/api/3/', '/rest/api/2/');
-
-				if (finalEndpoint !== endpoint) {
-					console.log(`[Proxy] Adapted endpoint for Server/DC: ${endpoint} -> ${finalEndpoint}`);
-				}
 			}
 
 			targetUrl = `${normalizedUrl}${finalEndpoint.startsWith('/') ? finalEndpoint : '/' + finalEndpoint}`;
@@ -55,8 +51,6 @@ export const POST: RequestHandler = async ({ request }) => {
 				authHeader = `Basic ${Buffer.from(`${email}:${apiToken}`, 'latin1').toString('base64')}`;
 			}
 		}
-
-		console.log(`[Proxy] ${method} ${targetUrl} (Tempo: ${isTempo})`);
 
 		const response = await fetch(targetUrl, {
 			method,

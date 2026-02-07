@@ -27,8 +27,6 @@ export const POST: RequestHandler = async ({ request }) => {
 			const tempoHost = baseUrl.includes('.atlassian.net') ? 'api.eu.tempo.io' : 'api.tempo.io';
 			const testUrl = `https://${tempoHost}/4/worklogs?limit=1`;
 
-			console.log(`=== TEMPO CONNECTION TEST (${tempoHost}) ===`);
-
 			const response = await fetch(testUrl, {
 				headers: {
 					Authorization: `Bearer ${apiToken}`,
@@ -60,8 +58,6 @@ export const POST: RequestHandler = async ({ request }) => {
 				`${baseUrl}/rest/api/2/serverInfo?os_authType=basic`
 			];
 
-			console.log(`\n=== JIRA UNIVERSAL TEST: ${baseUrl} ===`);
-
 			// Try Bearer (PAT) first as it worked in the user's curl, then Basic
 			const strategies = [
 				{ name: 'Bearer (PAT)', header: `Bearer ${apiToken}` },
@@ -74,7 +70,6 @@ export const POST: RequestHandler = async ({ request }) => {
 			let lastStatus = 401;
 
 			for (const strategy of strategies) {
-				console.log(`Trying strategy: ${strategy.name}`);
 				for (const endpoint of testEndpoints) {
 					try {
 						const response = await fetch(endpoint, {
@@ -89,11 +84,9 @@ export const POST: RequestHandler = async ({ request }) => {
 						});
 
 						lastStatus = response.status;
-						console.log(`Endpoint ${endpoint} -> Status ${lastStatus}`);
 
 						if (response.ok) {
 							const result = await response.json();
-							console.log(`SUCCESS with ${strategy.name}`);
 							return json({
 								success: true,
 								message: `Połączenie nawiązane (${strategy.name})!`,
@@ -102,7 +95,7 @@ export const POST: RequestHandler = async ({ request }) => {
 							});
 						}
 					} catch (err: any) {
-						console.log(`Error: ${err.message}`);
+						console.error(`Error: ${err.message}`);
 					}
 				}
 			}

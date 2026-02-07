@@ -235,8 +235,6 @@ function createSettingsStore() {
 
 	// Sync from cloud (downstream) - updates local state only, does NOT push back to cloud
 	function syncFromCloud(cloudSettings: AppSettings) {
-		console.log('SettingsStore: Syncing from cloud (downstream update)');
-
 		// If we have local settings, try to merge secrets to avoid wiping them
 		const mergedSettings = mergeSecrets(settings, cloudSettings);
 

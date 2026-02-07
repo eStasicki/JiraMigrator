@@ -375,8 +375,6 @@ export async function searchJiraIssues(
 			}
 		}
 
-		console.log('Searching JQL:', jql);
-
 		const response = await fetch('/api/jira/proxy', {
 			method: 'POST',
 			headers: { 'Content-Type': 'application/json' },
@@ -743,8 +741,6 @@ export async function deleteWorklogInJiraY(
 			? `/4/worklogs/${worklogId}`
 			: `/rest/api/2/issue/${issueKeyOrId}/worklog/${worklogId}`;
 
-		console.log(`[JiraApi] Deleting worklog ${worklogId} from ${isTempo ? 'Tempo' : 'Jira'}...`);
-
 		const response = await fetch('/api/jira/proxy', {
 			method: 'POST',
 			headers: { 'Content-Type': 'application/json' },
@@ -764,7 +760,6 @@ export async function deleteWorklogInJiraY(
 			return false;
 		}
 
-		console.log(`[JiraApi] Worklog ${worklogId} deleted successfully.`);
 		return true;
 	} catch (error) {
 		console.error('Delete worklog error:', error);
@@ -802,13 +797,8 @@ export async function checkTempoPeriodStatus(
 			})
 		});
 
-		console.log(
-			`[checkTempoPeriodStatus] Checking URL: /4/timesheet-approvals/user/${accountId}?from=${getLocalDateString(new Date(date.getFullYear(), date.getMonth(), 1))}&to=${getLocalDateString(new Date(date.getFullYear(), date.getMonth() + 1, 0))}`
-		);
-
 		if (response.ok) {
 			const data = await response.json();
-			console.log('[checkTempoPeriodStatus] API Response:', JSON.stringify(data, null, 2));
 			let results: any[] = [];
 
 			if (Array.isArray(data.results)) {
@@ -835,7 +825,6 @@ export async function checkTempoPeriodStatus(
 			});
 
 			if (relevantApproval) {
-				console.log('[checkTempoPeriodStatus] Found relevant approval:', relevantApproval);
 				// Check status
 				const statusKey = relevantApproval.status?.key || relevantApproval.status;
 				const status = (typeof statusKey === 'string' ? statusKey : 'OPEN').toUpperCase();
@@ -848,7 +837,7 @@ export async function checkTempoPeriodStatus(
 					return { isLocked: false, status };
 				}
 			} else {
-				console.log('[checkTempoPeriodStatus] No relevant approval found for date:', targetDateStr);
+				// console.log('[checkTempoPeriodStatus] No relevant approval found for date:', targetDateStr);
 			}
 		} else {
 			console.error('[checkTempoPeriodStatus] API Error:', response.status, await response.text());

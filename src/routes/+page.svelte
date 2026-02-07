@@ -38,10 +38,9 @@
 
 	async function loadJiraX() {
 		if (!activeProject) {
-			console.log('[Page] loadJiraX: No active project');
 			return;
 		}
-		console.log('[Page] loadJiraX: Loading worklogs for', migrationStore.state.jiraXDate);
+
 		migrationStore.setLoadingX(true);
 		try {
 			const worklogs = await fetchWorklogsFromJiraX(
@@ -50,7 +49,7 @@
 				activeProject.jiraX.apiToken,
 				migrationStore.state.jiraXDate
 			);
-			console.log(`[Page] loadJiraX: Found ${worklogs.length} worklogs`);
+
 			migrationStore.setJiraXWorklogs(worklogs);
 		} catch (error) {
 			console.error('[Page] Error loading Jira X:', error);
@@ -61,10 +60,9 @@
 
 	async function loadJiraY() {
 		if (!activeProject) {
-			console.log('[Page] loadJiraY: No active project');
 			return;
 		}
-		console.log('[Page] loadJiraY: Loading parents from Jira Y');
+
 		migrationStore.setLoadingY(true);
 		try {
 			// Fetch parents and period status in parallel
@@ -85,9 +83,6 @@
 				)
 			]);
 
-			console.log(
-				`[Page] loadJiraY: Found ${parents.length} parents. Status: ${periodStatus.status}`
-			);
 			migrationStore.setJiraYParents(parents);
 			migrationStore.setPeriodStatus(periodStatus.isLocked, periodStatus.status);
 		} catch (error) {
@@ -98,7 +93,6 @@
 	}
 
 	async function loadAllData() {
-		console.log('[Page] loadAllData triggered');
 		await Promise.all([loadJiraX(), loadJiraY()]);
 	}
 
@@ -127,7 +121,6 @@
 
 	async function handleMigrate(isDryRun: boolean = false) {
 		if (isDryRun) {
-			console.log('--- DRY RUN COMPLETED ---');
 			migrationMessage = {
 				type: 'success',
 				text: 'Symulacja zakończona powodzeniem! Dane są gotowe do migracji.'
@@ -213,7 +206,6 @@
 		// We don't track date here anymore to avoid double-triggers
 		// with handleJiraXDateChange, but we handle the initial load.
 		if (lastLoadedKey !== currentProjectId) {
-			console.log('[Page] Project resolved/changed, performing initial load');
 			lastLoadedKey = currentProjectId;
 			loadAllData();
 		}
