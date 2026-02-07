@@ -30,7 +30,8 @@
 
 	// Derived
 	const isMoved = $derived(worklog.isMoved);
-	const canDrag = $derived(draggable && !isMoved);
+	const isLocked = $derived(migrationStore.state.isPeriodLocked);
+	const canDrag = $derived(draggable && !isMoved && !isLocked);
 
 	let isDragging = $state(false);
 	let isEditing = $state(false);
@@ -343,24 +344,26 @@
 						</div>
 
 						<div class="flex items-center">
-							<button
-								onclick={startEdit}
-								class="rounded p-1 text-slate-500 opacity-0 transition-all group-hover:opacity-100 hover:bg-slate-700 hover:text-white"
-								title="Edytuj wpis"
-							>
-								<Edit2 class="size-3.5" />
-							</button>
-							{#if onRemove}
+							{#if !isLocked}
 								<button
-									onclick={(e) => {
-										e.stopPropagation();
-										onRemove();
-									}}
-									class="rounded p-1 text-slate-500 opacity-0 transition-all group-hover:opacity-100 hover:bg-red-500/10 hover:text-red-400"
-									title="Usuń (Wycofaj)"
+									onclick={startEdit}
+									class="rounded p-1 text-slate-500 opacity-0 transition-all group-hover:opacity-100 hover:bg-slate-700 hover:text-white"
+									title="Edytuj wpis"
 								>
-									<X class="size-3.5" />
+									<Edit2 class="size-3.5" />
 								</button>
+								{#if onRemove}
+									<button
+										onclick={(e) => {
+											e.stopPropagation();
+											onRemove();
+										}}
+										class="rounded p-1 text-slate-500 opacity-0 transition-all group-hover:opacity-100 hover:bg-red-500/10 hover:text-red-400"
+										title="Usuń (Wycofaj)"
+									>
+										<X class="size-3.5" />
+									</button>
+								{/if}
 							{/if}
 						</div>
 					</div>

@@ -46,6 +46,8 @@
 		e.preventDefault();
 		migrationStore.clearAllDragOver();
 
+		if (migrationStore.state.isPeriodLocked) return;
+
 		const data = e.dataTransfer?.getData('application/json');
 		const dragType = e.dataTransfer?.getData('text/plain');
 
@@ -64,10 +66,12 @@
 	}
 
 	function handleRemoveChild(worklogId: string) {
+		if (migrationStore.state.isPeriodLocked) return;
 		migrationStore.removeChildFromParent(parent.id, worklogId);
 	}
 
 	function handleRemoveParent() {
+		if (migrationStore.state.isPeriodLocked) return;
 		migrationStore.removeParent(parent.id);
 	}
 
@@ -84,6 +88,7 @@
 	}
 
 	function handleRemoveSelected() {
+		if (migrationStore.state.isPeriodLocked) return;
 		migrationStore.removeSelectedChildrenFromParent(parent.id);
 	}
 
@@ -100,6 +105,7 @@
 	role="region"
 	aria-label={parent.issueKey}
 	class="rounded-xl border transition-all duration-200
+		{migrationStore.state.isPeriodLocked ? 'opacity-70 grayscale-[0.3]' : ''}
 		{isDragOver
 		? 'z-30 -translate-y-1 border-emerald-500 bg-emerald-500/10 shadow-2xl ring-4 ring-emerald-500/20'
 		: 'border-slate-700/50 bg-slate-800/40 hover:border-slate-600'}"
@@ -170,11 +176,20 @@
 			<button
 				type="button"
 				onclick={handleRemoveParent}
-				class="rounded-lg p-1.5 text-slate-500 transition-colors hover:bg-red-500/20 hover:text-red-400"
+				disabled={migrationStore.state.isPeriodLocked}
+				class="rounded-lg p-1.5 text-slate-500 transition-colors {migrationStore.state
+					.isPeriodLocked
+					? 'cursor-not-allowed opacity-50'
+					: 'hover:bg-red-500/20 hover:text-red-400'}"
 				title="Usuń rodzica"
 			>
 				<Trash2 class="size-4" />
 			</button>
+			{#if migrationStore.state.isPeriodLocked}
+				<div title="Okres zamknięty" class="text-amber-500/50">
+					<!-- Optional Lock Icon here if desired, but banner is enough -->
+				</div>
+			{/if}
 		</div>
 	</div>
 
@@ -207,7 +222,11 @@
 					<button
 						type="button"
 						onclick={handleToggleSelectAll}
-						class="flex items-center gap-2 text-sm text-slate-400 transition-colors hover:text-white"
+						disabled={migrationStore.state.isPeriodLocked}
+						class="flex items-center gap-2 text-sm text-slate-400 transition-colors {migrationStore
+							.state.isPeriodLocked
+							? 'cursor-not-allowed opacity-50'
+							: 'hover:text-white'}"
 					>
 						{#if allChildrenSelected}
 							<CheckSquare class="size-4 text-emerald-400" />
@@ -233,7 +252,11 @@
 							<button
 								type="button"
 								onclick={handleRemoveSelected}
-								class="rounded-lg p-1.5 text-slate-500 transition-colors hover:bg-red-500/20 hover:text-red-400"
+								disabled={migrationStore.state.isPeriodLocked}
+								class="rounded-lg p-1.5 text-slate-500 transition-colors {migrationStore.state
+									.isPeriodLocked
+									? 'cursor-not-allowed opacity-50'
+									: 'hover:bg-red-500/20 hover:text-red-400'}"
 								title="Usuń zaznaczone"
 							>
 								<Trash2 class="size-4" />
@@ -248,10 +271,13 @@
 							<WorklogCard
 								worklog={child}
 								draggable={true}
-								showCheckbox={true}
+								showCheckbox={!migrationStore.state.isPeriodLocked}
 								isSelected={migrationStore.isChildWorklogSelected(parent.id, child.id)}
-								onToggleSelect={() =>
-									migrationStore.toggleChildWorklogSelection(parent.id, child.id)}
+								onToggleSelect={() => {
+									if (!migrationStore.state.isPeriodLocked) {
+										migrationStore.toggleChildWorklogSelection(parent.id, child.id);
+									}
+								}}
 								dropTargetParentId={parent.id}
 								onRemove={() => handleRemoveChild(child.id)}
 							/>

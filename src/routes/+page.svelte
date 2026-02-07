@@ -5,7 +5,8 @@
 	import {
 		fetchWorklogsFromJiraX,
 		fetchParentsFromJiraY,
-		migrateWorklogsToJiraY
+		migrateWorklogsToJiraY,
+		checkTempoPeriodStatus
 	} from '$lib/api/jiraApi';
 	import { getTotalProgress } from '$lib/utils';
 	import WorklogCard from '$lib/components/WorklogCard.svelte';
@@ -27,7 +28,9 @@
 		CheckSquare,
 		Square,
 		Settings,
-		Sparkles
+		Sparkles,
+		Lock,
+		ArrowRight
 	} from 'lucide-svelte';
 
 	let migrationMessage = $state<{ type: 'success' | 'error'; text: string } | null>(null);
@@ -64,15 +67,29 @@
 		console.log('[Page] loadJiraY: Loading parents from Jira Y');
 		migrationStore.setLoadingY(true);
 		try {
-			const parents = await fetchParentsFromJiraY(
-				activeProject.jiraY.baseUrl,
-				activeProject.jiraY.email,
-				activeProject.jiraY.apiToken,
-				migrationStore.state.jiraXDate,
-				activeProject.jiraY.tempoToken
+			// Fetch parents and period status in parallel
+			const [parents, periodStatus] = await Promise.all([
+				fetchParentsFromJiraY(
+					activeProject.jiraY.baseUrl,
+					activeProject.jiraY.email,
+					activeProject.jiraY.apiToken,
+					migrationStore.state.jiraXDate,
+					activeProject.jiraY.tempoToken
+				),
+				checkTempoPeriodStatus(
+					activeProject.jiraY.baseUrl,
+					activeProject.jiraY.email, // Use email for identifying user
+					activeProject.jiraY.apiToken,
+					migrationStore.state.jiraXDate,
+					activeProject.jiraY.tempoToken || ''
+				)
+			]);
+
+			console.log(
+				`[Page] loadJiraY: Found ${parents.length} parents. Status: ${periodStatus.status}`
 			);
-			console.log(`[Page] loadJiraY: Found ${parents.length} parents`);
 			migrationStore.setJiraYParents(parents);
+			migrationStore.setPeriodStatus(periodStatus.isLocked, periodStatus.status);
 		} catch (error) {
 			console.error('[Page] Error loading Jira Y:', error);
 		} finally {
@@ -222,6 +239,8 @@
 		jiraXDragOver = false;
 		migrationStore.clearAllDragOver();
 
+		if (migrationStore.state.isPeriodLocked) return;
+
 		const data = e.dataTransfer?.getData('application/json');
 		const dragType = e.dataTransfer?.getData('text/plain');
 
@@ -255,7 +274,7 @@
 	{migrationProgress}
 />
 
-<div class="flex min-h-screen flex-col pt-16">
+<div class="flex min-h-screen flex-col pt-16 lg:h-screen lg:overflow-hidden">
 	<!-- Migration Message -->
 	{#if migrationMessage}
 		<div
@@ -277,8 +296,21 @@
 		</div>
 	{/if}
 
+	<!-- Global Loading Indicator -->
+	{#if migrationStore.state.isLoadingX || migrationStore.state.isLoadingY}
+		<div class="animate-in fade-in slide-in-from-bottom-4 fixed right-6 bottom-6 z-50">
+			<div
+				class="flex items-center justify-center rounded-full bg-slate-900/80 p-3 text-violet-400 shadow-lg ring-1 ring-white/10 backdrop-blur-md transition-all duration-300"
+			>
+				<Loader2 class="size-6 animate-spin" />
+			</div>
+		</div>
+	{/if}
+
 	<!-- Main Content -->
-	<main class="mx-auto flex w-full max-w-[1600px] flex-1 flex-col gap-6 p-4 lg:p-6">
+	<main
+		class="mx-auto flex w-[95%] max-w-[1600px] flex-1 flex-col gap-6 px-0 py-6 lg:min-h-0 lg:w-[80%] lg:overflow-hidden"
+	>
 		{#if !activeProject}
 			<div class="flex flex-1 flex-col items-center justify-center gap-6 text-center">
 				<div
@@ -322,19 +354,48 @@
 						/>
 					</div>
 				</div>
-
-				{#if migrationStore.state.isLoadingX || migrationStore.state.isLoadingY}
-					<div class="flex animate-pulse items-center gap-2 text-xs font-medium text-violet-400">
-						<Loader2 class="size-3 animate-spin" />
-						Aktualizowanie danych...
-					</div>
-				{/if}
 			</div>
+
+			<!-- Floating Action Button (Apply Rules) -->
+			{#if migrationStore.state.jiraXWorklogs.length > 0 && !migrationStore.state.isPeriodLocked}
+				{@const allMoved = migrationStore.state.jiraXWorklogs.every((w) => w.isMoved)}
+				{@const isDisabled = migrationStore.state.isPeriodLocked || allMoved}
+				<div class="fixed bottom-8 left-1/2 z-30 -translate-x-1/2 transform lg:bottom-10">
+					<button
+						type="button"
+						onclick={() => !isDisabled && migrationStore.applyRules()}
+						disabled={isDisabled}
+						class="group flex items-center gap-2 rounded-full border border-violet-500/30 bg-slate-900/90 py-3 pr-5 pl-4 text-violet-400 shadow-[0_0_20px_rgba(139,92,246,0.3)] backdrop-blur-md transition-all duration-300
+						{isDisabled
+							? 'cursor-not-allowed opacity-50 grayscale'
+							: 'hover:scale-105 hover:border-violet-500/50 hover:bg-slate-800 hover:text-white hover:shadow-[0_0_30px_rgba(139,92,246,0.5)]'}"
+						title={migrationStore.state.isPeriodLocked
+							? 'Edycja zablokowana (okres zamknięty)'
+							: allMoved
+								? 'Wszystkie elementy zostały już przeniesione'
+								: 'Zastosuj reguły automatyczne'}
+					>
+						<div
+							class="flex size-8 items-center justify-center rounded-full bg-violet-500/20 group-hover:bg-violet-500/30"
+						>
+							{#if migrationStore.state.isPeriodLocked}
+								<Lock class="size-4" />
+							{:else if allMoved}
+								<CheckCircle2 class="size-4" />
+							{:else}
+								<ArrowRight class="size-4" />
+							{/if}
+						</div>
+						<span class="text-sm font-semibold">
+							{allMoved ? 'Wszystko przeniesione' : 'Zastosuj reguły'}
+						</span>
+					</button>
+				</div>
+			{/if}
 
 			<!-- Two Column Layout -->
 			<div
-				class="grid flex-1 grid-cols-1 gap-4 lg:grid-cols-2 lg:gap-6"
-				style="min-height: calc(100vh - 8rem);"
+				class="grid flex-1 grid-cols-1 gap-4 lg:min-h-0 lg:grid-cols-2 lg:grid-rows-[minmax(0,1fr)] lg:gap-6 lg:overflow-hidden"
 			>
 				<!-- Column 1: Jira X (Source) -->
 				<div
@@ -353,19 +414,22 @@
 									</span>
 								</h3>
 								<p class="mt-0.5 text-sm text-slate-400">Źródło worklogów</p>
+								{#if migrationStore.state.isPeriodLocked}
+									<div class="mt-2 text-xs font-bold text-amber-500">
+										<div class="flex items-center gap-1.5 tracking-wider uppercase">
+											<Lock class="size-3" />
+											<span>{migrationStore.state.periodStatus}</span>
+										</div>
+										<p class="mt-1 flex font-normal opacity-80">
+											Ten miesiąc został już zatwierdzony w Jira {jiraYName}. Przenoszenie jest
+											zablokowane.
+										</p>
+									</div>
+								{/if}
 							</div>
 
 							<div class="flex items-center gap-2">
 								{#if migrationStore.state.jiraXWorklogs.length > 0}
-									<Button
-										variant="ghost"
-										size="sm"
-										onclick={() => migrationStore.applyRules()}
-										title="Zastosuj reguły automatyczne"
-										class="text-violet-400 hover:bg-violet-500/10"
-									>
-										<Sparkles class="size-4" />
-									</Button>
 									<div class="flex items-center gap-1.5 rounded-lg bg-slate-800 px-3 py-1.5">
 										<Clock class="size-4 text-violet-400" />
 										<span class="text-sm font-semibold text-white">
@@ -404,11 +468,18 @@
 							>
 								<button
 									type="button"
-									onclick={() =>
-										allSelected
-											? migrationStore.deselectAllWorklogs()
-											: migrationStore.selectAllWorklogs()}
-									class="flex items-center gap-2 text-sm text-slate-400 transition-colors hover:text-white"
+									onclick={() => {
+										if (!migrationStore.state.isPeriodLocked) {
+											allSelected
+												? migrationStore.deselectAllWorklogs()
+												: migrationStore.selectAllWorklogs();
+										}
+									}}
+									disabled={migrationStore.state.isPeriodLocked}
+									class="flex items-center gap-2 text-sm text-slate-400 transition-colors {migrationStore
+										.state.isPeriodLocked
+										? 'cursor-not-allowed opacity-50'
+										: 'hover:text-white'}"
 								>
 									{#if allSelected}
 										<CheckSquare class="size-4 text-violet-400" />
@@ -446,9 +517,13 @@
 									<WorklogCard
 										{worklog}
 										draggable={true}
-										showCheckbox={true}
+										showCheckbox={!migrationStore.state.isPeriodLocked}
 										isSelected={migrationStore.isWorklogSelected(worklog.id)}
-										onToggleSelect={() => migrationStore.toggleWorklogSelection(worklog.id)}
+										onToggleSelect={() => {
+											if (!migrationStore.state.isPeriodLocked) {
+												migrationStore.toggleWorklogSelection(worklog.id);
+											}
+										}}
 									/>
 								{/each}
 							</div>
@@ -473,9 +548,35 @@
 									</span>
 								</h3>
 								<p class="mt-0.5 text-sm text-slate-400">Zadania z ostatnich 7 dni</p>
+								{#if migrationStore.state.isPeriodLocked}
+									<div class="mt-2 text-xs font-bold text-amber-500">
+										<div class="flex items-center gap-1.5 tracking-wider uppercase">
+											<Lock class="size-3" />
+											<span>{migrationStore.state.periodStatus}</span>
+										</div>
+										<p class="mt-1 flex font-normal opacity-80">
+											Ten miesiąc został już zatwierdzony w Jira {jiraYName}. Edycja jest
+											zablokowana.
+										</p>
+									</div>
+								{/if}
 							</div>
 
 							<div class="flex items-center gap-2">
+								{#if migrationStore.state.jiraYParents.length > 0}
+									{@const allYWorklogs = migrationStore.state.jiraYParents.flatMap(
+										(p) => p.children
+									)}
+									{#if allYWorklogs.length > 0}
+										<div class="flex items-center gap-1.5 rounded-lg bg-emerald-500/10 px-3 py-1.5">
+											<Clock class="size-4 text-emerald-400" />
+											<span class="text-sm font-semibold text-white">
+												{getTotalProgress(allYWorklogs)}
+											</span>
+										</div>
+									{/if}
+								{/if}
+
 								{#if pendingMigration.count > 0}
 									<div
 										class="flex items-center gap-1.5 rounded-lg bg-violet-500/20 px-3 py-1.5"
@@ -515,17 +616,25 @@
 								<button
 									type="button"
 									onclick={() => migrationStore.openAddParentModal()}
-									class="flex w-full items-center justify-center gap-2 rounded-xl border-2 border-dashed border-slate-700 py-4 text-slate-400 transition-all hover:border-emerald-500/50 hover:bg-emerald-500/5 hover:text-emerald-400"
+									disabled={migrationStore.state.isPeriodLocked}
+									class="flex w-full items-center justify-center gap-2 rounded-xl border-2 border-dashed border-slate-700 py-4 text-slate-400 transition-all
+									{migrationStore.state.isPeriodLocked
+										? 'cursor-not-allowed bg-slate-900/50 opacity-50'
+										: 'hover:border-emerald-500/50 hover:bg-emerald-500/5 hover:text-emerald-400'}"
 								>
 									<Plus class="size-5" />
-									<span class="font-medium">Dodaj rodzica z Jira {jiraYName}</span>
+									<span class="font-medium">
+										{migrationStore.state.isPeriodLocked
+											? 'Dodawanie zablokowane (okres zamknięty)'
+											: `Dodaj rodzica z Jira ${jiraYName}`}
+									</span>
 								</button>
 							</div>
 						{/if}
 					</div>
 
 					<!-- Migrate Button -->
-					{#if pendingMigration.count > 0}
+					{#if pendingMigration.count > 0 && !migrationStore.state.isPeriodLocked}
 						<div
 							class="sticky bottom-0 z-10 border-t border-slate-700/50 bg-slate-900/90 p-4 backdrop-blur-md"
 						>
@@ -544,6 +653,14 @@
 									Zmigruj worklogi
 								{/if}
 							</Button>
+						</div>
+					{:else if migrationStore.state.isPeriodLocked}
+						<div
+							class="sticky bottom-0 z-10 border-t border-slate-700/50 bg-slate-900/90 p-4 text-center backdrop-blur-md"
+						>
+							<p class="text-sm font-medium text-amber-500/80">
+								Migracja zablokowana - okres zatwierdzony
+							</p>
 						</div>
 					{/if}
 				</div>

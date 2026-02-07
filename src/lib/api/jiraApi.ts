@@ -2,12 +2,41 @@
  * Jira & Tempo Cloud API client
  */
 import { formatSeconds, getLocalDateString } from '$lib/utils';
+import { Cache } from './cache';
 
 export interface ConnectionTestResult {
 	success: boolean;
 	message: string;
 	userEmail?: string;
 	serverInfo?: string;
+}
+
+/**
+ * Helper to fetch 'myself' with caching
+ */
+async function getMyself(baseUrl: string, email: string, apiToken: string) {
+	const cacheKey = `${baseUrl}_${email}_myself`;
+	const cached = Cache.getUser(cacheKey);
+	if (cached) return cached;
+
+	const res = await fetch('/api/jira/proxy', {
+		method: 'POST',
+		headers: { 'Content-Type': 'application/json' },
+		body: JSON.stringify({
+			baseUrl,
+			email,
+			apiToken,
+			endpoint: '/rest/api/3/myself',
+			method: 'GET'
+		})
+	});
+
+	if (res.ok) {
+		const data = await res.json();
+		Cache.setUser(cacheKey, data);
+		return data;
+	}
+	return null;
 }
 
 /**
@@ -32,25 +61,14 @@ export async function fetchParentsFromJiraY(
 		const startDateStr = getLocalDateString(startDate);
 
 		if (tempoToken && tempoToken.trim() !== '') {
-			// Get current user ID for Tempo
-			const myselfRes = await fetch('/api/jira/proxy', {
-				method: 'POST',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({
-					baseUrl,
-					email,
-					apiToken,
-					endpoint: '/rest/api/3/myself',
-					method: 'GET'
-				})
-			});
+			// Get current user ID for Tempo (cached)
+			const userData = await getMyself(baseUrl, email, apiToken);
+			if (!userData) return [];
 
-			if (!myselfRes.ok) return [];
-
-			const userData = await myselfRes.json();
 			const accountId = userData.accountId;
 
 			// Fetch worklogs from the last 7 days instead of just the selected date
+			// Tempo worklogs request is heavy but necessary once
 			const tempoRes = await fetch('/api/jira/proxy', {
 				method: 'POST',
 				headers: { 'Content-Type': 'application/json' },
@@ -71,6 +89,7 @@ export async function fetchParentsFromJiraY(
 				if (yourWorklogs.length > 0) {
 					// Map to track unique issues from the last 7 days
 					const issuesMap = new Map();
+					const issueIdsToFetch = new Set<string>();
 
 					// First pass: collect all unique issues from the last 7 days
 					yourWorklogs.forEach((wl: any) => {
@@ -82,6 +101,7 @@ export async function fetchParentsFromJiraY(
 								id: issueId,
 								worklogsForSelectedDate: []
 							});
+							issueIdsToFetch.add(String(issueId));
 						}
 
 						// Only add worklogs from the selected date to the children list
@@ -92,58 +112,96 @@ export async function fetchParentsFromJiraY(
 						}
 					});
 
+					// --- OPTIMIZATION START: Batch Fetch Issue Details ---
+					const issueDetailsMap = new Map<string, any>();
+					const idsNeedFetching: string[] = [];
+
+					// Check cache first
+					for (const id of issueIdsToFetch) {
+						const cachedIssue = Cache.getIssue(id);
+						if (cachedIssue) {
+							issueDetailsMap.set(id, cachedIssue);
+						} else {
+							idsNeedFetching.push(id);
+						}
+					}
+
+					// Fetch missing issues in batches (JQL 'id in (...)')
+					if (idsNeedFetching.length > 0) {
+						// JQL has a limit on query length, but for 7 days of work usually < 50 issues.
+						// Splitting into chunks of 50 just in case.
+						const chunkSize = 50;
+						for (let i = 0; i < idsNeedFetching.length; i += chunkSize) {
+							const chunk = idsNeedFetching.slice(i, i + chunkSize);
+							const jql = `id in (${chunk.join(',')})`;
+
+							try {
+								const searchRes = await fetch('/api/jira/proxy', {
+									method: 'POST',
+									headers: { 'Content-Type': 'application/json' },
+									body: JSON.stringify({
+										baseUrl,
+										email,
+										apiToken,
+										endpoint: '/rest/api/3/search/jql',
+										method: 'POST',
+										body: {
+											jql,
+											fields: ['key', 'summary', 'issuetype', 'status'],
+											maxResults: 100
+										}
+									})
+								});
+
+								if (searchRes.ok) {
+									const searchData = await searchRes.json();
+									(searchData.issues || []).forEach((issue: any) => {
+										Cache.setIssue(issue.id, issue); // Cache for future
+										issueDetailsMap.set(issue.id, issue);
+									});
+								}
+							} catch (e) {
+								console.error('Batch fetch error:', e);
+							}
+						}
+					}
+					// --- OPTIMIZATION END ---
+
 					const results: any[] = [];
 					const issueIds = Array.from(issuesMap.keys());
 
 					for (const id of issueIds) {
-						try {
-							const jiraRes = await fetch('/api/jira/proxy', {
-								method: 'POST',
-								headers: { 'Content-Type': 'application/json' },
-								body: JSON.stringify({
-									baseUrl,
-									email,
-									apiToken,
-									endpoint: `/rest/api/2/issue/${id}`,
-									method: 'GET'
-								})
+						const info = issuesMap.get(id);
+						const issueData = issueDetailsMap.get(String(id));
+
+						if (issueData) {
+							// Only create children from worklogs on the selected date
+							const children = info.worklogsForSelectedDate.map((wl: any) => ({
+								id: wl.tempoWorklogId || wl.id,
+								issueKey: issueData.key,
+								issueSummary: wl.description || issueData.fields?.summary || 'Brak opisu',
+								timeSpentFormatted: formatSeconds(wl.timeSpentSeconds),
+								timeSpentSeconds: wl.timeSpentSeconds,
+								comment: wl.description || issueData.fields?.summary,
+								date: dateStr
+							}));
+
+							// Calculate total time only from the selected date
+							const totalSecondsForSelectedDate = info.worklogsForSelectedDate.reduce(
+								(sum: number, wl: any) => sum + wl.timeSpentSeconds,
+								0
+							);
+
+							results.push({
+								id: String(id),
+								issueKey: issueData.key,
+								issueSummary: issueData.fields?.summary || 'Brak tytułu',
+								type: issueData.fields?.issuetype?.name || 'Task',
+								status: issueData.fields?.status?.name || 'Status',
+								totalTimeSpentFormatted: formatSeconds(totalSecondsForSelectedDate),
+								isExpanded: true,
+								children: children
 							});
-
-							const info = issuesMap.get(id);
-
-							if (jiraRes.ok) {
-								const issueData = await jiraRes.json();
-
-								// Only create children from worklogs on the selected date
-								const children = info.worklogsForSelectedDate.map((wl: any) => ({
-									id: wl.tempoWorklogId || wl.id,
-									issueKey: issueData.key,
-									issueSummary: wl.description || issueData.fields?.summary || 'Brak opisu',
-									timeSpentFormatted: formatSeconds(wl.timeSpentSeconds),
-									timeSpentSeconds: wl.timeSpentSeconds,
-									comment: wl.description || issueData.fields?.summary,
-									date: dateStr
-								}));
-
-								// Calculate total time only from the selected date
-								const totalSecondsForSelectedDate = info.worklogsForSelectedDate.reduce(
-									(sum: number, wl: any) => sum + wl.timeSpentSeconds,
-									0
-								);
-
-								results.push({
-									id: id,
-									issueKey: issueData.key,
-									issueSummary: issueData.fields?.summary || 'Brak tytułu',
-									type: issueData.fields?.issuetype?.name || 'Task',
-									status: issueData.fields?.status?.name || 'Status',
-									totalTimeSpentFormatted: formatSeconds(totalSecondsForSelectedDate),
-									isExpanded: true,
-									children: children
-								});
-							}
-						} catch (e) {
-							console.error(`Error fetching issue ${id}:`, e);
 						}
 					}
 					return results;
@@ -170,28 +228,18 @@ export async function fetchWorklogsFromJiraX(
 	try {
 		const dateStr = getLocalDateString(date);
 
-		// 1. Get current user's accountId to filter worklogs strictly
-		const myselfRes = await fetch('/api/jira/proxy', {
-			method: 'POST',
-			headers: { 'Content-Type': 'application/json' },
-			body: JSON.stringify({
-				baseUrl,
-				email,
-				apiToken,
-				endpoint: '/rest/api/3/myself',
-				method: 'GET'
-			})
-		});
-
+		// 1. Get current user (cached)
+		const myselfData = await getMyself(baseUrl, email, apiToken);
 		let currentUserAccountId: string | undefined;
 		let currentUserName: string | undefined;
-		if (myselfRes.ok) {
-			const myselfData = await myselfRes.json();
+
+		if (myselfData) {
 			currentUserAccountId = myselfData.accountId;
 			currentUserName = myselfData.name;
 		}
 
 		// 2. Search for issues where the user has logged time today
+		// We still need to search issues first. JQL is efficient here.
 		const jql = `worklogDate = '${dateStr}' AND worklogAuthor = currentUser()`;
 		const response = await fetch('/api/jira/proxy', {
 			method: 'POST',
@@ -207,7 +255,12 @@ export async function fetchWorklogsFromJiraX(
 		});
 		const data = await response.json();
 		const results: any[] = [];
-		for (const issue of data.issues || []) {
+		const issues = data.issues || [];
+
+		// Prepare parallel fetches for worklogs
+		const worklogPromises = issues.map(async (issue: any) => {
+			Cache.setIssue(issue.id, issue); // Proactively cache issue details from search result
+
 			const wlRes = await fetch('/api/jira/proxy', {
 				method: 'POST',
 				headers: { 'Content-Type': 'application/json' },
@@ -219,39 +272,29 @@ export async function fetchWorklogsFromJiraX(
 					method: 'GET'
 				})
 			});
-			if (!wlRes.ok) continue;
+			if (!wlRes.ok) return [];
+
 			const wlData = await wlRes.json();
+			const issueWorklogs: any[] = [];
+
 			(wlData.worklogs || []).forEach((wl: any) => {
 				// Filter by date AND author
-				// Check strict date match (string prefix YYYY-MM-DD)
 				const isDateMatch = wl.started.startsWith(dateStr);
-
-				// Check author match
 				let isAuthorMatch = false;
 
-				// 1. Match by Email (Server/DC/App.js logic)
+				// 1. Match by Email
 				if (email && wl.author?.emailAddress) {
 					if (wl.author.emailAddress.toLowerCase() === email.toLowerCase()) {
 						isAuthorMatch = true;
 					}
 				}
-
-				// 2. Match by AccountId (Cloud logic)
+				// 2. Match by AccountId
 				if (!isAuthorMatch && currentUserAccountId && wl.author?.accountId) {
 					if (wl.author.accountId === currentUserAccountId) {
 						isAuthorMatch = true;
 					}
 				}
-
-				// 3. Match by Display Name/Self (Fallback for really old servers or weird proxies)
-				// If we haven't matched yet, and we are desperate...
-				// However, defaulting to 'true' caused the bug of showing other's worklogs.
-				// optimizing: if JQL worked correctly with 'currentUser()', we should theoretically only see our worklogs.
-				// But if JQL returned an issue where *multiple* people logged time (common), fetching /worklog returns ALL worklogs.
-				// We MUST filter strictly. If neither Email nor ID matches, we skip.
-
-				// 4. Special case: If user provided 'myself' data has a 'name' and worklog has 'name' (username)
-				// This handles cases where emailAddress might be hidden but username is visible
+				// 3. Match by Name
 				if (!isAuthorMatch && currentUserName && wl.author?.name) {
 					if (currentUserName === wl.author.name) {
 						isAuthorMatch = true;
@@ -259,11 +302,11 @@ export async function fetchWorklogsFromJiraX(
 				}
 
 				if (isDateMatch && isAuthorMatch) {
-					results.push({
+					issueWorklogs.push({
 						id: wl.id,
 						issueKey: issue.key,
 						issueSummary: issue.fields.summary,
-						timeSpentFormatted: formatSeconds(wl.timeSpentSeconds), // Initial load always HM, store handles switch
+						timeSpentFormatted: formatSeconds(wl.timeSpentSeconds),
 						timeSpentSeconds: wl.timeSpentSeconds,
 						comment:
 							wl.comment?.content?.[0]?.content?.[0]?.text || wl.comment || issue.fields.summary,
@@ -273,7 +316,13 @@ export async function fetchWorklogsFromJiraX(
 					});
 				}
 			});
-		}
+
+			return issueWorklogs;
+		});
+
+		const allWorklogsResults = await Promise.all(worklogPromises);
+		allWorklogsResults.forEach((wls) => results.push(...wls));
+
 		return results;
 	} catch {
 		return [];
@@ -294,27 +343,39 @@ export async function searchJiraIssues(
 
 	const cleanQuery = query.trim();
 
+	// Check if we have this exact query cached (unlikely for arbitrary text, but maybe strict key)
+	const cachedIssue = Cache.getIssue(cleanQuery);
+	if (cachedIssue) {
+		// If user typed exact key and we have it, return it immediately as a single result
+		return [
+			{
+				id: cachedIssue.id,
+				issueKey: cachedIssue.key,
+				issueSummary: cachedIssue.fields?.summary || 'Brak tytułu',
+				type: cachedIssue.fields?.issuetype?.name || 'Task',
+				status: cachedIssue.fields?.status?.name || 'Status',
+				totalTimeSpentFormatted: '0h',
+				isExpanded: true,
+				children: []
+			}
+		];
+	}
+
 	try {
 		// 1. Try JQL Search
-		// Build JQL dynamically to avoid 400 Bad Request on invalid project keys (e.g. searching for "PROJ-123" in project field)
 		const isIssueKey = /^[a-zA-Z]+-\d+$/.test(cleanQuery);
-		let jql = `summary ~ "${cleanQuery}*"`; // Always search summary
+		let jql = `summary ~ "${cleanQuery}*"`;
 
 		if (isIssueKey) {
-			// If it looks like a specific issue key, match exact key strongly
 			jql = `key = "${cleanQuery}" OR ${jql}`;
 		} else {
-			// Loose key match
 			jql = `key ~ "${cleanQuery}*" OR ${jql}`;
-
-			// Only try project search if query doesn't look like an issue key
-			// and looks like a potential project key (alphanumeric)
 			if (/^[a-zA-Z0-9]+$/.test(cleanQuery)) {
 				jql += ` OR project = "${cleanQuery}"`;
 			}
 		}
 
-		console.log('Searching JQL:', jql); // Debugging
+		console.log('Searching JQL:', jql);
 
 		const response = await fetch('/api/jira/proxy', {
 			method: 'POST',
@@ -336,16 +397,19 @@ export async function searchJiraIssues(
 		if (response.ok) {
 			const data = await response.json();
 			if (data.issues && data.issues.length > 0) {
-				return data.issues.map((issue: any) => ({
-					id: issue.id,
-					issueKey: issue.key,
-					issueSummary: issue.fields?.summary || 'Brak tytułu',
-					type: issue.fields?.issuetype?.name || 'Task',
-					status: issue.fields?.status?.name || 'Status',
-					totalTimeSpentFormatted: '0h',
-					isExpanded: true,
-					children: []
-				}));
+				return data.issues.map((issue: any) => {
+					Cache.setIssue(issue.id, issue); // Cache results
+					return {
+						id: issue.id,
+						issueKey: issue.key,
+						issueSummary: issue.fields?.summary || 'Brak tytułu',
+						type: issue.fields?.issuetype?.name || 'Task',
+						status: issue.fields?.status?.name || 'Status',
+						totalTimeSpentFormatted: '0h',
+						isExpanded: true,
+						children: []
+					};
+				});
 			}
 		}
 
@@ -411,7 +475,7 @@ export async function migrateWorklogsToJiraY(
 	let processedWorklogs = 0;
 
 	try {
-		// 1. Get Account ID if using Tempo
+		// 1. Get Account ID if using Tempo (cached)
 		onProgress?.({
 			current: 0,
 			total: totalWorklogs,
@@ -423,24 +487,14 @@ export async function migrateWorklogsToJiraY(
 
 		let authorAccountId = '';
 		if (tempoToken) {
-			const myselfRes = await fetch('/api/jira/proxy', {
-				method: 'POST',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({
-					baseUrl,
-					email,
-					apiToken,
-					endpoint: '/rest/api/3/myself',
-					method: 'GET'
-				})
-			});
-			if (myselfRes.ok) {
-				const data = await myselfRes.json();
-				authorAccountId = data.accountId;
+			const myselfData = await getMyself(baseUrl, email, apiToken);
+			if (myselfData) {
+				authorAccountId = myselfData.accountId;
 			}
 		}
 
 		// 2. Fetch Work Attributes definitions (Reference)
+		// TODO: Cache this too if needed, but it's only once per migration session
 		let workAttributeDefinitions: any[] = [];
 		if (tempoToken) {
 			onProgress?.({
@@ -485,19 +539,33 @@ export async function migrateWorklogsToJiraY(
 			});
 
 			if (tempoToken) {
-				const issueRes = await fetch('/api/jira/proxy', {
-					method: 'POST',
-					headers: { 'Content-Type': 'application/json' },
-					body: JSON.stringify({
-						baseUrl,
-						email,
-						apiToken,
-						endpoint: `/rest/api/2/issue/${migration.parentKey}`,
-						method: 'GET'
-					})
-				});
-				if (issueRes.ok) {
-					const issueData = await issueRes.json();
+				// Optimization: Check cache first for parent details
+				let issueData = Cache.getIssue(migration.parentKey);
+
+				// Try to find issue by key if ID fails
+				if (!issueData) {
+					try {
+						const issueRes = await fetch('/api/jira/proxy', {
+							method: 'POST',
+							headers: { 'Content-Type': 'application/json' },
+							body: JSON.stringify({
+								baseUrl,
+								email,
+								apiToken,
+								endpoint: `/rest/api/2/issue/${migration.parentKey}`,
+								method: 'GET'
+							})
+						});
+						if (issueRes.ok) {
+							issueData = await issueRes.json();
+							Cache.setIssue(migration.parentKey, issueData);
+						}
+					} catch (e) {
+						console.error(e);
+					}
+				}
+
+				if (issueData) {
 					issueIdForTempo = Number(issueData.id);
 					parentSummary = issueData.fields?.summary || '';
 				}
@@ -703,3 +771,94 @@ export async function deleteWorklogInJiraY(
 		return false;
 	}
 }
+
+export async function checkTempoPeriodStatus(
+	baseUrl: string,
+	email: string,
+	apiToken: string,
+	date: Date,
+	tempoToken: string
+): Promise<{ isLocked: boolean; status: string }> {
+	if (!tempoToken) return { isLocked: false, status: 'OPEN' };
+
+	try {
+		// dateStr variable removed as it was unused
+		const myselfData = await getMyself(baseUrl, email, apiToken);
+		if (!myselfData) return { isLocked: false, status: 'UNKNOWN' };
+
+		const accountId = myselfData.accountId;
+
+		// Check approvals for the specific date
+		const response = await fetch('/api/jira/proxy', {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify({
+				baseUrl,
+				apiToken: tempoToken,
+				isTempo: true,
+				// Fetch approvals specifically for the month of the selected date
+				endpoint: `/4/timesheet-approvals/user/${accountId}?from=${getLocalDateString(new Date(date.getFullYear(), date.getMonth(), 1))}&to=${getLocalDateString(new Date(date.getFullYear(), date.getMonth() + 1, 0))}`,
+				method: 'GET'
+			})
+		});
+
+		console.log(
+			`[checkTempoPeriodStatus] Checking URL: /4/timesheet-approvals/user/${accountId}?from=${getLocalDateString(new Date(date.getFullYear(), date.getMonth(), 1))}&to=${getLocalDateString(new Date(date.getFullYear(), date.getMonth() + 1, 0))}`
+		);
+
+		if (response.ok) {
+			const data = await response.json();
+			console.log('[checkTempoPeriodStatus] API Response:', JSON.stringify(data, null, 2));
+			let results: any[] = [];
+
+			if (Array.isArray(data.results)) {
+				results = data.results;
+			} else if (data.period && data.status) {
+				// Single period response directly in root
+				results = [data];
+			} else if (Array.isArray(data)) {
+				// Sometimes might be direct array, though unlikely for this endpoint
+				results = data;
+			}
+
+			// Check if any approval period covers the target date
+			const targetDateStr = getLocalDateString(date);
+			const relevantApproval = results.find((a: any) => {
+				const from = a.period?.from;
+				const to = a.period?.to;
+				// Log each period check
+				// console.log(`Checking period: ${from} - ${to} against ${targetDateStr}`);
+				if (from && to) {
+					return targetDateStr >= from && targetDateStr <= to;
+				}
+				return false;
+			});
+
+			if (relevantApproval) {
+				console.log('[checkTempoPeriodStatus] Found relevant approval:', relevantApproval);
+				// Check status
+				const statusKey = relevantApproval.status?.key || relevantApproval.status;
+				const status = (typeof statusKey === 'string' ? statusKey : 'OPEN').toUpperCase();
+				const lockedStatuses = ['SUBMITTED', 'APPROVED', 'CLOSED'];
+
+				if (lockedStatuses.includes(status)) {
+					return { isLocked: true, status };
+				} else {
+					// Even if open, return status
+					return { isLocked: false, status };
+				}
+			} else {
+				console.log('[checkTempoPeriodStatus] No relevant approval found for date:', targetDateStr);
+			}
+		} else {
+			console.error('[checkTempoPeriodStatus] API Error:', response.status, await response.text());
+		}
+
+		return { isLocked: false, status: 'OPEN' };
+	} catch (error) {
+		console.error('Check period status error:', error);
+		return { isLocked: false, status: 'ERROR' };
+	}
+}
+
+// function checkTempoPeriodAttributes() has been removed as it was unused and empty.

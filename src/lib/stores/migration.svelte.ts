@@ -49,6 +49,8 @@ export interface MigrationState {
 	dragOverParentId: string | null;
 	dragOverWorklogId: string | null;
 	dragOverWorklogSide: 'top' | 'bottom' | null;
+	isPeriodLocked: boolean;
+	periodStatus: string;
 }
 
 function parseFormattedTime(formatted: string): number {
@@ -107,7 +109,9 @@ function createMigrationStore() {
 		isSearching: false,
 		dragOverParentId: null,
 		dragOverWorklogId: null,
-		dragOverWorklogSide: null
+		dragOverWorklogSide: null,
+		isPeriodLocked: false,
+		periodStatus: 'OPEN'
 	});
 
 	function setDragOverParent(parentId: string | null) {
@@ -268,6 +272,11 @@ function createMigrationStore() {
 
 	function setMigrating(migrating: boolean) {
 		state.isMigrating = migrating;
+	}
+
+	function setPeriodStatus(isLocked: boolean, status: string) {
+		state.isPeriodLocked = isLocked;
+		state.periodStatus = status;
 	}
 
 	function toggleParentExpanded(parentId: string) {
@@ -797,6 +806,7 @@ function createMigrationStore() {
 		setLoadingX,
 		setLoadingY,
 		setMigrating,
+		setPeriodStatus,
 		setDragOverParent,
 		setDragOverWorklog,
 		clearAllDragOver,

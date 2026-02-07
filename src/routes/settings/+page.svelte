@@ -253,7 +253,7 @@
 </svelte:head>
 
 <div class="min-h-screen pt-16">
-	<div class="mx-auto max-w-6xl px-4 py-8">
+	<div class="mx-auto w-[95%] max-w-[1600px] px-0 py-8 lg:w-[80%]">
 		<!-- Header -->
 		<div class="mb-8">
 			<h1 class="text-3xl font-bold text-white">Ustawienia</h1>

@@ -41,7 +41,7 @@
 <nav
 	class="fixed top-0 right-0 left-0 z-40 border-b border-slate-800 bg-slate-900/95 backdrop-blur-sm"
 >
-	<div class="mx-auto max-w-6xl px-4">
+	<div class="mx-auto w-[95%] max-w-[1600px] px-0 lg:w-[80%]">
 		<div class="flex h-16 items-center justify-between">
 			<!-- Logo -->
 			<a href="/" class="flex items-center gap-3">
