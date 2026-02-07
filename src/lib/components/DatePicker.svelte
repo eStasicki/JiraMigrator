@@ -119,9 +119,12 @@
 
 <div class="relative" bind:this={containerRef}>
 	{#if label}
-		<label class="mb-2 block text-sm font-medium text-slate-400">{label}</label>
+		<label for="date-picker-button" class="mb-2 block text-sm font-medium text-slate-400"
+			>{label}</label
+		>
 	{/if}
 	<button
+		id="date-picker-button"
 		type="button"
 		onclick={() => (showCalendar = !showCalendar)}
 		class="flex w-full items-center justify-center rounded-lg border border-slate-600 bg-slate-800/50 px-4 py-2.5 text-left text-slate-100 transition-all duration-200 hover:border-slate-500 hover:bg-slate-800 focus:border-violet-500 focus:ring-2 focus:ring-violet-500/20 focus:outline-none"
