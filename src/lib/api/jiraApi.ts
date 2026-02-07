@@ -12,6 +12,7 @@ export interface ConnectionTestResult {
 
 /**
  * Fetch issues from Jira Y via Tempo or direct
+ * Fetches worklogs from the last 7 days to show parent tasks even if nothing was logged on the selected date
  */
 export async function fetchParentsFromJiraY(
 	baseUrl: string,
@@ -24,6 +25,11 @@ export async function fetchParentsFromJiraY(
 
 	try {
 		const dateStr = getLocalDateString(date);
+
+		// Calculate date range: 7 days before the selected date to the selected date
+		const startDate = new Date(date);
+		startDate.setDate(startDate.getDate() - 6); // 7 days total (including selected date)
+		const startDateStr = getLocalDateString(startDate);
 
 		if (tempoToken && tempoToken.trim() !== '') {
 			// Get current user ID for Tempo
@@ -44,6 +50,7 @@ export async function fetchParentsFromJiraY(
 			const userData = await myselfRes.json();
 			const accountId = userData.accountId;
 
+			// Fetch worklogs from the last 7 days instead of just the selected date
 			const tempoRes = await fetch('/api/jira/proxy', {
 				method: 'POST',
 				headers: { 'Content-Type': 'application/json' },
@@ -52,7 +59,7 @@ export async function fetchParentsFromJiraY(
 					email,
 					apiToken: tempoToken, // Pass Tempo token as apiToken for the proxy
 					isTempo: true,
-					endpoint: `/4/worklogs/user/${accountId}?from=${dateStr}&to=${dateStr}&limit=1000`,
+					endpoint: `/4/worklogs/user/${accountId}?from=${startDateStr}&to=${dateStr}&limit=1000`,
 					method: 'GET'
 				})
 			});
@@ -62,20 +69,27 @@ export async function fetchParentsFromJiraY(
 				const yourWorklogs = tempoData.results || [];
 
 				if (yourWorklogs.length > 0) {
+					// Map to track unique issues from the last 7 days
 					const issuesMap = new Map();
+
+					// First pass: collect all unique issues from the last 7 days
 					yourWorklogs.forEach((wl: any) => {
 						const issueId = wl.issue?.id;
 						if (!issueId) return;
 
-						const current = issuesMap.get(issueId) || {
-							id: issueId,
-							totalSeconds: 0,
-							rawWorklogs: []
-						};
+						if (!issuesMap.has(issueId)) {
+							issuesMap.set(issueId, {
+								id: issueId,
+								worklogsForSelectedDate: []
+							});
+						}
 
-						current.totalSeconds += wl.timeSpentSeconds;
-						current.rawWorklogs.push(wl);
-						issuesMap.set(issueId, current);
+						// Only add worklogs from the selected date to the children list
+						const worklogDate = wl.startDate; // Tempo uses 'startDate' field (YYYY-MM-DD)
+						if (worklogDate === dateStr) {
+							const current = issuesMap.get(issueId);
+							current.worklogsForSelectedDate.push(wl);
+						}
 					});
 
 					const results: any[] = [];
@@ -99,7 +113,9 @@ export async function fetchParentsFromJiraY(
 
 							if (jiraRes.ok) {
 								const issueData = await jiraRes.json();
-								const children = info.rawWorklogs.map((wl: any) => ({
+
+								// Only create children from worklogs on the selected date
+								const children = info.worklogsForSelectedDate.map((wl: any) => ({
 									id: wl.tempoWorklogId || wl.id,
 									issueKey: issueData.key,
 									issueSummary: wl.description || issueData.fields?.summary || 'Brak opisu',
@@ -109,13 +125,19 @@ export async function fetchParentsFromJiraY(
 									date: dateStr
 								}));
 
+								// Calculate total time only from the selected date
+								const totalSecondsForSelectedDate = info.worklogsForSelectedDate.reduce(
+									(sum: number, wl: any) => sum + wl.timeSpentSeconds,
+									0
+								);
+
 								results.push({
 									id: id,
 									issueKey: issueData.key,
 									issueSummary: issueData.fields?.summary || 'Brak tytułu',
 									type: issueData.fields?.issuetype?.name || 'Task',
 									status: issueData.fields?.status?.name || 'Status',
-									totalTimeSpentFormatted: formatSeconds(info.totalSeconds),
+									totalTimeSpentFormatted: formatSeconds(totalSecondsForSelectedDate),
 									isExpanded: true,
 									children: children
 								});

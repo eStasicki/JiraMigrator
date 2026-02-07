@@ -157,10 +157,6 @@
 		}
 	}
 
-	function getMonthName(date: Date): string {
-		return date.toLocaleDateString('pl-PL', { month: 'long', year: 'numeric' });
-	}
-
 	const pendingMigration = $derived(migrationStore.getTotalPendingMigration());
 	const selectedCount = $derived(migrationStore.getSelectedCount());
 	const selectedTime = $derived(migrationStore.getSelectedTotalTime());
@@ -460,9 +456,7 @@
 										{migrationStore.state.jiraYParents.length}
 									</span>
 								</h3>
-								<p class="mt-0.5 text-sm text-slate-400">
-									Zadania w {getMonthName(migrationStore.state.jiraYMonth)}
-								</p>
+								<p class="mt-0.5 text-sm text-slate-400">Zadania z ostatnich 7 dni</p>
 							</div>
 
 							<div class="flex items-center gap-2">
