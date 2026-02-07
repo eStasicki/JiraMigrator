@@ -215,6 +215,24 @@ function createAuthFacade() {
 		}
 	}
 
+	async function signInWithGoogle() {
+		state.isLoading = true;
+		state.error = null;
+		const { data, error } = await supabase.auth.signInWithOAuth({
+			provider: 'google',
+			options: {
+				redirectTo: `${window.location.origin}/`
+			}
+		});
+		if (error) {
+			state.error = error.message;
+			state.isLoading = false;
+			return { data: null, error };
+		}
+		// Note: The page will redirect, so isLoading will remain true until redirect
+		return { data, error: null };
+	}
+
 	async function signOut() {
 		state.isLoading = true;
 		const { error } = await supabase.auth.signOut();
@@ -249,6 +267,7 @@ function createAuthFacade() {
 			return !!state.user;
 		},
 		signInWithPassword,
+		signInWithGoogle,
 		signUp,
 		signOut,
 		updateProfile,
