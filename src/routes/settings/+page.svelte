@@ -522,9 +522,9 @@
 												checked={editingProject?.jiraX.authType === 'basic'}
 												onchange={(e) => {
 													if (editingProject) {
-														editingProject.jiraX.authType = e.currentTarget.checked
-															? 'basic'
-															: 'bearer';
+														const newType = e.currentTarget.checked ? 'basic' : 'bearer';
+														editingProject.jiraX.authType = newType;
+														console.log(`[UI] Jira X authType changed to: ${newType}`);
 													}
 												}}
 												class="size-4 rounded border-slate-700 bg-slate-900 text-violet-500 focus:ring-violet-500"
@@ -665,9 +665,9 @@
 												checked={editingProject?.jiraY.authType === 'basic'}
 												onchange={(e) => {
 													if (editingProject) {
-														editingProject.jiraY.authType = e.currentTarget.checked
-															? 'basic'
-															: 'bearer';
+														const newType = e.currentTarget.checked ? 'basic' : 'bearer';
+														editingProject.jiraY.authType = newType;
+														console.log(`[UI] Jira Y authType changed to: ${newType}`);
 													}
 												}}
 												class="size-4 rounded border-slate-700 bg-slate-900 text-violet-500 focus:ring-violet-500"

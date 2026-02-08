@@ -56,6 +56,8 @@ async function jiraFetch(config: {
 	}
 
 	// DIRECT FETCH (Browser)
+	console.log(`[JiraApi] Sending ${method} to ${endpoint} with authType: ${authType || 'auto'}`);
+
 	let targetUrl = '';
 	let authHeader = '';
 
@@ -91,7 +93,7 @@ async function jiraFetch(config: {
 			// Using a more robust base64 encoding for potential non-ASCII chars
 			try {
 				authHeader = `Basic ${btoa(unescape(encodeURIComponent(`${email}:${token}`)))}`;
-			} catch (e) {
+			} catch {
 				authHeader = `Basic ${btoa(`${email}:${token}`)}`;
 			}
 		} else if (authType === 'bearer') {

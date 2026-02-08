@@ -98,29 +98,37 @@ export const POST: RequestHandler = async (event) => {
 			const testEndpoints = [`${baseUrl}/rest/api/2/myself`, `${baseUrl}/rest/api/2/serverInfo`];
 
 			const isCloud = baseUrl.includes('.atlassian.net');
+			const authType = data.authType;
 
 			// For Cloud, we primarily use Basic. For Server, we can try both or follow authType.
 			const strategies = [];
 
-			if (data.authType === 'basic') {
+			const token = apiToken.trim();
+
+			if (token.startsWith('Basic ') || token.startsWith('Bearer ')) {
+				strategies.push({
+					name: 'Direct (Full Token)',
+					header: token
+				});
+			} else if (authType === 'basic') {
 				strategies.push({
 					name: 'Basic (Forced)',
-					header: `Basic ${Buffer.from(`${email}:${apiToken}`).toString('base64')}`
+					header: `Basic ${Buffer.from(`${email}:${token}`).toString('base64')}`
 				});
-			} else if (data.authType === 'bearer') {
-				strategies.push({ name: 'Bearer (Forced)', header: `Bearer ${apiToken}` });
+			} else if (authType === 'bearer') {
+				strategies.push({ name: 'Bearer (Forced)', header: `Bearer ${token}` });
 			} else {
 				// Original auto-detection logic
 				if (isCloud) {
 					strategies.push({
-						name: 'Basic (Email:Token)',
-						header: `Basic ${Buffer.from(`${email}:${apiToken}`).toString('base64')}`
+						name: 'Basic (Auto)',
+						header: `Basic ${Buffer.from(`${email}:${token}`).toString('base64')}`
 					});
 				} else {
-					strategies.push({ name: 'Bearer (PAT)', header: `Bearer ${apiToken}` });
+					strategies.push({ name: 'Bearer (Auto)', header: `Bearer ${token}` });
 					strategies.push({
-						name: 'Basic (Email:Token)',
-						header: `Basic ${Buffer.from(`${email}:${apiToken}`).toString('base64')}`
+						name: 'Basic (Auto)',
+						header: `Basic ${Buffer.from(`${email}:${token}`).toString('base64')}`
 					});
 				}
 			}
