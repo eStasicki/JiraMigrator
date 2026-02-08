@@ -82,16 +82,26 @@ async function jiraFetch(config: {
 		const sep = targetUrl.includes('?') ? '&' : '?';
 		targetUrl = `${targetUrl}${sep}os_authType=basic`;
 
-		if (authType === 'basic') {
-			authHeader = `Basic ${btoa(`${email}:${apiToken}`)}`;
+		// Robust Auth Header logic
+		const token = apiToken.trim();
+		if (token.startsWith('Basic ') || token.startsWith('Bearer ')) {
+			authHeader = token;
+		} else if (authType === 'basic') {
+			// standard Basic Auth: btoa(email:password)
+			// Using a more robust base64 encoding for potential non-ASCII chars
+			try {
+				authHeader = `Basic ${btoa(unescape(encodeURIComponent(`${email}:${token}`)))}`;
+			} catch (e) {
+				authHeader = `Basic ${btoa(`${email}:${token}`)}`;
+			}
 		} else if (authType === 'bearer') {
-			authHeader = `Bearer ${apiToken}`;
+			authHeader = `Bearer ${token}`;
 		} else {
-			// Fallback to existing logic if authType is not specified
+			// Fallback logic
 			if (!isCloud) {
-				authHeader = `Bearer ${apiToken}`;
+				authHeader = `Bearer ${token}`; // PAT is standard for Server/DC
 			} else {
-				authHeader = `Basic ${btoa(`${email}:${apiToken}`)}`;
+				authHeader = `Basic ${btoa(`${email}:${token}`)}`;
 			}
 		}
 	}
