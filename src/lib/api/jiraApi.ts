@@ -23,8 +23,19 @@ async function jiraFetch(config: {
 	body?: any;
 	isTempo?: boolean;
 	useProxy?: boolean;
+	authType?: 'basic' | 'bearer';
 }) {
-	const { baseUrl, email, apiToken, endpoint, method = 'GET', body, isTempo, useProxy } = config;
+	const {
+		baseUrl,
+		email,
+		apiToken,
+		endpoint,
+		method = 'GET',
+		body,
+		isTempo,
+		useProxy,
+		authType
+	} = config;
 
 	// DEFAULT: Use proxy unless explicitly disabled
 	if (useProxy !== false) {
@@ -38,7 +49,8 @@ async function jiraFetch(config: {
 				endpoint,
 				method,
 				body,
-				isTempo
+				isTempo,
+				authType
 			})
 		});
 	}
@@ -70,11 +82,17 @@ async function jiraFetch(config: {
 		const sep = targetUrl.includes('?') ? '&' : '?';
 		targetUrl = `${targetUrl}${sep}os_authType=basic`;
 
-		if (!isCloud) {
+		if (authType === 'basic') {
+			authHeader = `Basic ${btoa(`${email}:${apiToken}`)}`;
+		} else if (authType === 'bearer') {
 			authHeader = `Bearer ${apiToken}`;
 		} else {
-			// In browser, use btoa for basic auth
-			authHeader = `Basic ${btoa(`${email}:${apiToken}`)}`;
+			// Fallback to existing logic if authType is not specified
+			if (!isCloud) {
+				authHeader = `Bearer ${apiToken}`;
+			} else {
+				authHeader = `Basic ${btoa(`${email}:${apiToken}`)}`;
+			}
 		}
 	}
 
@@ -98,7 +116,8 @@ async function getMyself(
 	baseUrl: string,
 	email: string,
 	apiToken: string,
-	useProxy: boolean = true
+	useProxy: boolean = true,
+	authType?: 'basic' | 'bearer'
 ) {
 	const cacheKey = `${baseUrl}_${email}_myself`;
 	const cached = Cache.getUser(cacheKey);
@@ -110,7 +129,8 @@ async function getMyself(
 		apiToken,
 		endpoint: '/rest/api/3/myself',
 		method: 'GET',
-		useProxy
+		useProxy,
+		authType
 	});
 
 	if (res.ok) {
@@ -131,7 +151,8 @@ export async function fetchParentsFromJiraY(
 	apiToken: string,
 	date: Date,
 	tempoToken?: string,
-	useProxy: boolean = true
+	useProxy: boolean = true,
+	authType?: 'basic' | 'bearer'
 ): Promise<any[]> {
 	if (typeof window === 'undefined' || !baseUrl.startsWith('http')) return [];
 
@@ -145,7 +166,7 @@ export async function fetchParentsFromJiraY(
 
 		if (tempoToken && tempoToken.trim() !== '') {
 			// Get current user ID for Tempo (cached)
-			const userData = await getMyself(baseUrl, email, apiToken, useProxy);
+			const userData = await getMyself(baseUrl, email, apiToken, useProxy, authType);
 			if (!userData) return [];
 
 			const accountId = userData.accountId;
@@ -159,7 +180,8 @@ export async function fetchParentsFromJiraY(
 				isTempo: true,
 				endpoint: `/4/worklogs/user/${accountId}?from=${startDateStr}&to=${dateStr}&limit=1000`,
 				method: 'GET',
-				useProxy
+				useProxy,
+				authType
 			});
 
 			if (tempoRes.ok) {
@@ -227,7 +249,8 @@ export async function fetchParentsFromJiraY(
 										fields: ['key', 'summary', 'issuetype', 'status'],
 										maxResults: 100
 									},
-									useProxy
+									useProxy,
+									authType
 								});
 
 								if (searchRes.ok) {
@@ -300,14 +323,15 @@ export async function fetchWorklogsFromJiraX(
 	email: string,
 	apiToken: string,
 	date: Date,
-	useProxy: boolean = true
+	useProxy: boolean = true,
+	authType?: 'basic' | 'bearer'
 ): Promise<any[]> {
 	if (typeof window === 'undefined' || !baseUrl.startsWith('http')) return [];
 	try {
 		const dateStr = getLocalDateString(date);
 
 		// 1. Get current user (cached)
-		const myselfData = await getMyself(baseUrl, email, apiToken, useProxy);
+		const myselfData = await getMyself(baseUrl, email, apiToken, useProxy, authType);
 		let currentUserAccountId: string | undefined;
 		let currentUserName: string | undefined;
 
@@ -326,7 +350,8 @@ export async function fetchWorklogsFromJiraX(
 			endpoint: '/rest/api/3/search/jql',
 			method: 'POST',
 			body: { jql, fields: ['key', 'summary', 'labels', 'issuetype'], maxResults: 100 },
-			useProxy
+			useProxy,
+			authType
 		});
 		const data = await response.json();
 		const results: any[] = [];
@@ -342,7 +367,8 @@ export async function fetchWorklogsFromJiraX(
 				apiToken,
 				endpoint: `/rest/api/3/issue/${issue.key}/worklog`,
 				method: 'GET',
-				useProxy
+				useProxy,
+				authType
 			});
 			if (!wlRes.ok) return [];
 
@@ -409,7 +435,8 @@ export async function searchJiraIssues(
 	email: string,
 	apiToken: string,
 	query: string,
-	useProxy: boolean = true
+	useProxy: boolean = true,
+	authType?: 'basic' | 'bearer'
 ): Promise<any[]> {
 	if (typeof window === 'undefined' || !baseUrl.startsWith('http')) return [];
 	if (!query || query.length < 2) return [];
@@ -459,7 +486,8 @@ export async function searchJiraIssues(
 				fields: ['key', 'summary', 'issuetype', 'status'],
 				maxResults: 100
 			},
-			useProxy
+			useProxy,
+			authType
 		});
 
 		if (response.ok) {
@@ -488,7 +516,8 @@ export async function searchJiraIssues(
 			apiToken,
 			endpoint: `/rest/api/3/issue/picker?query=${encodeURIComponent(cleanQuery)}`,
 			method: 'GET',
-			useProxy
+			useProxy,
+			authType
 		});
 
 		if (pickerRes.ok) {
@@ -531,7 +560,8 @@ export async function migrateWorklogsToJiraY(
 		currentWorklog: string;
 		phase: string;
 	}) => void,
-	useProxy: boolean = true
+	useProxy: boolean = true,
+	authType?: 'basic' | 'bearer'
 ): Promise<{ success: boolean; migratedCount: number }> {
 	let migratedCount = 0;
 	const targetDateStr = getLocalDateString(targetDate);
@@ -553,7 +583,7 @@ export async function migrateWorklogsToJiraY(
 
 		let authorAccountId = '';
 		if (tempoToken) {
-			const myselfData = await getMyself(baseUrl, email, apiToken, useProxy);
+			const myselfData = await getMyself(baseUrl, email, apiToken, useProxy, authType);
 			if (myselfData) {
 				authorAccountId = myselfData.accountId;
 			}
@@ -579,7 +609,8 @@ export async function migrateWorklogsToJiraY(
 				isTempo: true,
 				endpoint: '/4/work-attributes',
 				method: 'GET',
-				useProxy
+				useProxy,
+				authType
 			});
 
 			if (attrsRes.ok) {
@@ -615,7 +646,8 @@ export async function migrateWorklogsToJiraY(
 							apiToken,
 							endpoint: `/rest/api/2/issue/${migration.parentKey}`,
 							method: 'GET',
-							useProxy
+							useProxy,
+							authType
 						});
 						if (issueRes.ok) {
 							issueData = await issueRes.json();
@@ -708,7 +740,8 @@ export async function migrateWorklogsToJiraY(
 							attributes:
 								attributesForThisMigration.length > 0 ? attributesForThisMigration : undefined
 						},
-						useProxy
+						useProxy,
+						authType
 					});
 				} else {
 					// NATIVE JIRA - Use targetDate from calendar
@@ -723,7 +756,8 @@ export async function migrateWorklogsToJiraY(
 							started: `${targetDateStr}T09:00:00.000+0000`, // Use date from calendar
 							comment: `[${worklog.issueKey}] ${worklog.comment || worklog.issueSummary}`
 						},
-						useProxy
+						useProxy,
+						authType
 					});
 				}
 
@@ -757,7 +791,8 @@ export async function testConnectionToJira(
 	baseUrl: string,
 	email: string,
 	apiToken: string,
-	useProxy: boolean = true
+	useProxy: boolean = true,
+	authType?: 'basic' | 'bearer'
 ): Promise<ConnectionTestResult> {
 	if (useProxy === false) {
 		try {
@@ -768,7 +803,8 @@ export async function testConnectionToJira(
 				apiToken,
 				endpoint: '/rest/api/2/myself',
 				method: 'GET',
-				useProxy: false
+				useProxy: false,
+				authType
 			});
 			if (res.ok) {
 				const data = await res.json();
@@ -796,7 +832,7 @@ export async function testConnectionToJira(
 		const r = await fetch('/api/test-connection', {
 			method: 'POST',
 			headers: { 'Content-Type': 'application/json' },
-			body: JSON.stringify({ baseUrl, email, apiToken, useProxy })
+			body: JSON.stringify({ baseUrl, email, apiToken, useProxy, authType })
 		});
 		return await r.json();
 	} catch {
@@ -807,7 +843,8 @@ export async function testConnectionToJira(
 export async function testConnectionToTempo(
 	baseUrl: string,
 	tempoToken: string,
-	useProxy: boolean = true
+	useProxy: boolean = true,
+	authType?: 'basic' | 'bearer'
 ): Promise<ConnectionTestResult> {
 	if (useProxy === false) {
 		try {
@@ -818,7 +855,8 @@ export async function testConnectionToTempo(
 				apiToken: tempoToken,
 				endpoint: '/4/worklogs?limit=1',
 				isTempo: true,
-				useProxy: false
+				useProxy: false,
+				authType
 			});
 			if (res.ok) {
 				return {
@@ -843,7 +881,7 @@ export async function testConnectionToTempo(
 		const r = await fetch('/api/test-connection', {
 			method: 'POST',
 			headers: { 'Content-Type': 'application/json' },
-			body: JSON.stringify({ baseUrl, apiToken: tempoToken, type: 'tempo', useProxy })
+			body: JSON.stringify({ baseUrl, apiToken: tempoToken, type: 'tempo', useProxy, authType })
 		});
 		return await r.json();
 	} catch {
@@ -855,24 +893,20 @@ export async function deleteWorklogInJiraY(
 	email: string,
 	apiToken: string,
 	worklogId: string,
-	issueKeyOrId?: string, // Required for native Jira
-	tempoToken?: string,
-	useProxy: boolean = true
+	isTempo: boolean = false,
+	useProxy: boolean = true,
+	authType?: 'basic' | 'bearer'
 ): Promise<boolean> {
 	try {
-		const isTempo = !!tempoToken;
-		const endpoint = isTempo
-			? `/4/worklogs/${worklogId}`
-			: `/rest/api/2/issue/${issueKeyOrId}/worklog/${worklogId}`;
-
 		const response = await jiraFetch({
 			baseUrl,
 			email,
-			apiToken: isTempo ? tempoToken : apiToken,
-			isTempo,
-			endpoint,
+			apiToken,
+			endpoint: isTempo ? `/4/worklogs/${worklogId}` : `/rest/api/2/worklog/${worklogId}`,
 			method: 'DELETE',
-			useProxy
+			isTempo,
+			useProxy,
+			authType
 		});
 
 		if (!response.ok) {
@@ -894,13 +928,14 @@ export async function checkTempoPeriodStatus(
 	apiToken: string,
 	date: Date,
 	tempoToken: string,
-	useProxy: boolean = true
+	useProxy: boolean = true,
+	authType?: 'basic' | 'bearer'
 ): Promise<{ isLocked: boolean; status: string }> {
 	if (!tempoToken) return { isLocked: false, status: 'OPEN' };
 
 	try {
 		// dateStr variable removed as it was unused
-		const myselfData = await getMyself(baseUrl, email, apiToken, useProxy);
+		const myselfData = await getMyself(baseUrl, email, apiToken, useProxy, authType);
 		if (!myselfData) return { isLocked: false, status: 'UNKNOWN' };
 
 		const accountId = myselfData.accountId;
@@ -914,7 +949,8 @@ export async function checkTempoPeriodStatus(
 			// Fetch approvals specifically for the month of the selected date
 			endpoint: `/4/timesheet-approvals/user/${accountId}?from=${getLocalDateString(new Date(date.getFullYear(), date.getMonth(), 1))}&to=${getLocalDateString(new Date(date.getFullYear(), date.getMonth() + 1, 0))}`,
 			method: 'GET',
-			useProxy
+			useProxy,
+			authType
 		});
 
 		if (response.ok) {

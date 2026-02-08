@@ -48,7 +48,8 @@
 				activeProject.jiraX.email,
 				activeProject.jiraX.apiToken,
 				migrationStore.state.jiraXDate,
-				activeProject.jiraX.useProxy
+				activeProject.jiraX.useProxy,
+				activeProject.jiraX.authType
 			);
 
 			migrationStore.setJiraXWorklogs(worklogs);
@@ -74,7 +75,8 @@
 					activeProject.jiraY.apiToken,
 					migrationStore.state.jiraXDate,
 					activeProject.jiraY.tempoToken,
-					activeProject.jiraY.useProxy
+					activeProject.jiraY.useProxy,
+					activeProject.jiraY.authType
 				),
 				checkTempoPeriodStatus(
 					activeProject.jiraY.baseUrl,
@@ -82,7 +84,8 @@
 					activeProject.jiraY.apiToken,
 					migrationStore.state.jiraXDate,
 					activeProject.jiraY.tempoToken || '',
-					activeProject.jiraY.useProxy
+					activeProject.jiraY.useProxy,
+					activeProject.jiraY.authType
 				)
 			]);
 
@@ -154,7 +157,8 @@
 				(progress) => {
 					migrationProgress = progress;
 				},
-				activeProject.jiraY.useProxy
+				activeProject.jiraY.useProxy,
+				activeProject.jiraY.authType
 			);
 
 			if (result.success) {

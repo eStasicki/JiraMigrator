@@ -21,7 +21,8 @@ export const POST: RequestHandler = async (event) => {
 			endpoint,
 			method = 'GET',
 			body,
-			isTempo = false
+			isTempo = false,
+			authType
 		} = await request.json();
 
 		let targetUrl = '';
@@ -56,12 +57,17 @@ export const POST: RequestHandler = async (event) => {
 			const sep = targetUrl.includes('?') ? '&' : '?';
 			targetUrl = `${targetUrl}${sep}os_authType=basic`;
 
-			// For non-Cloud Jira (Server/DC), we use Bearer auth (PAT) which proved successful.
-			// For Cloud, we stick to Basic (email:token).
-			if (!isCloud) {
+			if (authType === 'basic') {
+				authHeader = `Basic ${Buffer.from(`${email}:${apiToken}`).toString('base64')}`;
+			} else if (authType === 'bearer') {
 				authHeader = `Bearer ${apiToken}`;
 			} else {
-				authHeader = `Basic ${Buffer.from(`${email}:${apiToken}`).toString('base64')}`;
+				// Fallback
+				if (!isCloud) {
+					authHeader = `Bearer ${apiToken}`;
+				} else {
+					authHeader = `Basic ${Buffer.from(`${email}:${apiToken}`).toString('base64')}`;
+				}
 			}
 		}
 

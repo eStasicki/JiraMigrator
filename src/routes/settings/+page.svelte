@@ -75,10 +75,12 @@
 		if (clone.jiraX) {
 			if (!clone.jiraX.tempoToken) clone.jiraX.tempoToken = '';
 			if (clone.jiraX.useProxy === undefined) clone.jiraX.useProxy = true;
+			if (!clone.jiraX.authType) clone.jiraX.authType = 'bearer';
 		}
 		if (clone.jiraY) {
 			if (!clone.jiraY.tempoToken) clone.jiraY.tempoToken = '';
 			if (clone.jiraY.useProxy === undefined) clone.jiraY.useProxy = true;
+			if (!clone.jiraY.authType) clone.jiraY.authType = 'bearer';
 		}
 		if (!clone.rules) clone.rules = [];
 
@@ -122,7 +124,8 @@
 				editingProject.jiraX.baseUrl,
 				editingProject.jiraX.email,
 				editingProject.jiraX.apiToken,
-				editingProject.jiraX.useProxy
+				editingProject.jiraX.useProxy,
+				editingProject.jiraX.authType
 			);
 		} finally {
 			testingConnectionX = false;
@@ -140,7 +143,8 @@
 				editingProject.jiraY.baseUrl,
 				editingProject.jiraY.email,
 				editingProject.jiraY.apiToken,
-				editingProject.jiraY.useProxy
+				editingProject.jiraY.useProxy,
+				editingProject.jiraY.authType
 			);
 		} finally {
 			testingConnectionY = false;
@@ -158,7 +162,8 @@
 			connectionTestResultTempoY = await testConnectionToTempo(
 				editingProject.jiraY.baseUrl,
 				editingProject.jiraY.tempoToken || '',
-				editingProject.jiraY.useProxy
+				editingProject.jiraY.useProxy,
+				editingProject.jiraY.authType
 			);
 		} finally {
 			testingTempoY = false;
@@ -509,6 +514,30 @@
 										{/if}
 									</div>
 
+									<div class="py-1">
+										<div class="flex items-center gap-2">
+											<input
+												id="jiraX-auth-type"
+												type="checkbox"
+												checked={editingProject?.jiraX.authType === 'basic'}
+												onchange={(e) => {
+													if (editingProject) {
+														editingProject.jiraX.authType = e.currentTarget.checked
+															? 'basic'
+															: 'bearer';
+													}
+												}}
+												class="size-4 rounded border-slate-700 bg-slate-900 text-violet-500 focus:ring-violet-500"
+											/>
+											<label for="jiraX-auth-type" class="text-sm font-medium text-slate-300">
+												Używaj Basic Auth (zamiast Bearer)
+											</label>
+										</div>
+										<p class="mt-1 text-[10px] leading-tight text-slate-500 italic">
+											Zaznacz, jeśli Twój klucz to standardowe hasło lub token typu "Basic".
+										</p>
+									</div>
+
 									<!-- Test Connection Button -->
 									<div class="border-t border-slate-700/50 pt-4">
 										<Button
@@ -626,6 +655,27 @@
 												Wyłączenie proxy zalecane tylko jeśli cel mierzysz w lokalną instancję Jira.
 											</p>
 										{/if}
+									</div>
+
+									<div class="py-1">
+										<div class="flex items-center gap-2">
+											<input
+												id="jiraY-auth-type"
+												type="checkbox"
+												checked={editingProject?.jiraY.authType === 'basic'}
+												onchange={(e) => {
+													if (editingProject) {
+														editingProject.jiraY.authType = e.currentTarget.checked
+															? 'basic'
+															: 'bearer';
+													}
+												}}
+												class="size-4 rounded border-slate-700 bg-slate-900 text-violet-500 focus:ring-violet-500"
+											/>
+											<label for="jiraY-auth-type" class="text-sm font-medium text-slate-300">
+												Używaj Basic Auth (zamiast Bearer)
+											</label>
+										</div>
 									</div>
 
 									<!-- Test Connection Buttons -->

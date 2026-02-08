@@ -8,6 +8,7 @@ export interface JiraConfig {
 	apiToken: string;
 	tempoToken: string; // Token for native Tempo Cloud API (optional, initialized as empty string)
 	useProxy?: boolean; // Whether to use Vercel proxy or fetch directly from the browser
+	authType?: 'basic' | 'bearer'; // Authentication method (Basic or Bearer)
 }
 
 export interface MigrationRule {
@@ -54,7 +55,8 @@ function createDefaultProject(name: string): Project {
 			email: '',
 			apiToken: '',
 			tempoToken: '',
-			useProxy: true
+			useProxy: true,
+			authType: 'bearer'
 		},
 		jiraY: {
 			name: 'Jira Y',
@@ -62,7 +64,8 @@ function createDefaultProject(name: string): Project {
 			email: '',
 			apiToken: '',
 			tempoToken: '',
-			useProxy: true
+			useProxy: true,
+			authType: 'bearer'
 		},
 		rules: [],
 		timeFormat: 'hm',
@@ -91,6 +94,12 @@ function createSettingsStore() {
 						}
 						if (!proj.timeFormat) {
 							proj.timeFormat = globalTimeFormat;
+						}
+						if (proj.jiraX && !proj.jiraX.authType) {
+							proj.jiraX.authType = 'bearer';
+						}
+						if (proj.jiraY && !proj.jiraY.authType) {
+							proj.jiraY.authType = 'bearer';
 						}
 						return proj;
 					});

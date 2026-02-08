@@ -99,19 +99,30 @@ export const POST: RequestHandler = async (event) => {
 
 			const isCloud = baseUrl.includes('.atlassian.net');
 
-			// For Cloud, we primarily use Basic. For Server, we can try both.
+			// For Cloud, we primarily use Basic. For Server, we can try both or follow authType.
 			const strategies = [];
-			if (isCloud) {
+
+			if (data.authType === 'basic') {
 				strategies.push({
-					name: 'Basic (Email:Token)',
+					name: 'Basic (Forced)',
 					header: `Basic ${Buffer.from(`${email}:${apiToken}`).toString('base64')}`
 				});
+			} else if (data.authType === 'bearer') {
+				strategies.push({ name: 'Bearer (Forced)', header: `Bearer ${apiToken}` });
 			} else {
-				strategies.push({ name: 'Bearer (PAT)', header: `Bearer ${apiToken}` });
-				strategies.push({
-					name: 'Basic (Email:Token)',
-					header: `Basic ${Buffer.from(`${email}:${apiToken}`).toString('base64')}`
-				});
+				// Original auto-detection logic
+				if (isCloud) {
+					strategies.push({
+						name: 'Basic (Email:Token)',
+						header: `Basic ${Buffer.from(`${email}:${apiToken}`).toString('base64')}`
+					});
+				} else {
+					strategies.push({ name: 'Bearer (PAT)', header: `Bearer ${apiToken}` });
+					strategies.push({
+						name: 'Basic (Email:Token)',
+						header: `Basic ${Buffer.from(`${email}:${apiToken}`).toString('base64')}`
+					});
+				}
 			}
 
 			let lastError = '';
