@@ -6,7 +6,8 @@ export interface JiraConfig {
 	baseUrl: string;
 	email: string;
 	apiToken: string;
-	tempoToken: string; // Token dla natywnego API Tempo Cloud (opcjonalny, ale zainicjowany jako pusty string)
+	tempoToken: string; // Token for native Tempo Cloud API (optional, initialized as empty string)
+	useProxy?: boolean; // Whether to use Vercel proxy or fetch directly from the browser
 }
 
 export interface MigrationRule {
@@ -52,14 +53,16 @@ function createDefaultProject(name: string): Project {
 			baseUrl: '',
 			email: '',
 			apiToken: '',
-			tempoToken: ''
+			tempoToken: '',
+			useProxy: true
 		},
 		jiraY: {
 			name: 'Jira Y',
 			baseUrl: '',
 			email: '',
 			apiToken: '',
-			tempoToken: ''
+			tempoToken: '',
+			useProxy: true
 		},
 		rules: [],
 		timeFormat: 'hm',
@@ -110,7 +113,7 @@ function createSettingsStore() {
 		saveToStorage();
 	}
 
-	// Helper to removing sensitive data before sending to cloud
+	// Helper to remove sensitive data before sending to the cloud
 	function sanitizeSettingsForCloud(appSettings: AppSettings): AppSettings {
 		// Deep clone to avoid mutating state
 		const cleanSettings = JSON.parse(JSON.stringify(appSettings));

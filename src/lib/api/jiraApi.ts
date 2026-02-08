@@ -12,23 +12,105 @@ export interface ConnectionTestResult {
 }
 
 /**
+ * Helper to fetch from Jira/Tempo, optionally via proxy
+ */
+async function jiraFetch(config: {
+	baseUrl: string;
+	email: string;
+	apiToken: string;
+	endpoint: string;
+	method?: string;
+	body?: any;
+	isTempo?: boolean;
+	useProxy?: boolean;
+}) {
+	const { baseUrl, email, apiToken, endpoint, method = 'GET', body, isTempo, useProxy } = config;
+
+	// DEFAULT: Use proxy unless explicitly disabled
+	if (useProxy !== false) {
+		return fetch('/api/jira/proxy', {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify({
+				baseUrl,
+				email,
+				apiToken,
+				endpoint,
+				method,
+				body,
+				isTempo
+			})
+		});
+	}
+
+	// DIRECT FETCH (Browser)
+	let targetUrl = '';
+	let authHeader = '';
+
+	if (isTempo) {
+		const tempoHost = baseUrl.includes('.atlassian.net') ? 'api.eu.tempo.io' : 'api.tempo.io';
+		targetUrl = `https://${tempoHost}${endpoint.startsWith('/') ? endpoint : '/' + endpoint}`;
+		authHeader = `Bearer ${apiToken}`;
+	} else {
+		if (!baseUrl) throw new Error('Jira URL is required');
+		const normalizedUrl = baseUrl.replace(/\/+$/, '').startsWith('http')
+			? baseUrl.replace(/\/+$/, '')
+			: `https://${baseUrl.replace(/\/+$/, '')}`;
+		const isCloud = normalizedUrl.includes('.atlassian.net');
+
+		let finalEndpoint = endpoint;
+		if (!isCloud) {
+			// Auto-correct endpoint version for Jira Server/Data Center
+			finalEndpoint = endpoint
+				.replace('/rest/api/3/search/jql', '/rest/api/2/search')
+				.replace('/rest/api/3/', '/rest/api/2/');
+		}
+
+		targetUrl = `${normalizedUrl}${finalEndpoint.startsWith('/') ? finalEndpoint : '/' + finalEndpoint}`;
+		const sep = targetUrl.includes('?') ? '&' : '?';
+		targetUrl = `${targetUrl}${sep}os_authType=basic`;
+
+		if (!isCloud) {
+			authHeader = `Bearer ${apiToken}`;
+		} else {
+			// In browser, use btoa for basic auth
+			authHeader = `Basic ${btoa(`${email}:${apiToken}`)}`;
+		}
+	}
+
+	return fetch(targetUrl, {
+		method,
+		headers: {
+			Authorization: authHeader,
+			Accept: 'application/json',
+			'Content-Type': 'application/json',
+			'X-Atlassian-Token': 'nocheck',
+			'X-Tempo-Api-Key': isTempo ? apiToken : ''
+		},
+		body: body ? JSON.stringify(body) : undefined
+	});
+}
+
+/**
  * Helper to fetch 'myself' with caching
  */
-async function getMyself(baseUrl: string, email: string, apiToken: string) {
+async function getMyself(
+	baseUrl: string,
+	email: string,
+	apiToken: string,
+	useProxy: boolean = true
+) {
 	const cacheKey = `${baseUrl}_${email}_myself`;
 	const cached = Cache.getUser(cacheKey);
 	if (cached) return cached;
 
-	const res = await fetch('/api/jira/proxy', {
-		method: 'POST',
-		headers: { 'Content-Type': 'application/json' },
-		body: JSON.stringify({
-			baseUrl,
-			email,
-			apiToken,
-			endpoint: '/rest/api/3/myself',
-			method: 'GET'
-		})
+	const res = await jiraFetch({
+		baseUrl,
+		email,
+		apiToken,
+		endpoint: '/rest/api/3/myself',
+		method: 'GET',
+		useProxy
 	});
 
 	if (res.ok) {
@@ -48,7 +130,8 @@ export async function fetchParentsFromJiraY(
 	email: string,
 	apiToken: string,
 	date: Date,
-	tempoToken?: string
+	tempoToken?: string,
+	useProxy: boolean = true
 ): Promise<any[]> {
 	if (typeof window === 'undefined' || !baseUrl.startsWith('http')) return [];
 
@@ -62,24 +145,21 @@ export async function fetchParentsFromJiraY(
 
 		if (tempoToken && tempoToken.trim() !== '') {
 			// Get current user ID for Tempo (cached)
-			const userData = await getMyself(baseUrl, email, apiToken);
+			const userData = await getMyself(baseUrl, email, apiToken, useProxy);
 			if (!userData) return [];
 
 			const accountId = userData.accountId;
 
 			// Fetch worklogs from the last 7 days instead of just the selected date
 			// Tempo worklogs request is heavy but necessary once
-			const tempoRes = await fetch('/api/jira/proxy', {
-				method: 'POST',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({
-					baseUrl,
-					email,
-					apiToken: tempoToken, // Pass Tempo token as apiToken for the proxy
-					isTempo: true,
-					endpoint: `/4/worklogs/user/${accountId}?from=${startDateStr}&to=${dateStr}&limit=1000`,
-					method: 'GET'
-				})
+			const tempoRes = await jiraFetch({
+				baseUrl,
+				email,
+				apiToken: tempoToken, // Pass Tempo token as apiToken for the proxy
+				isTempo: true,
+				endpoint: `/4/worklogs/user/${accountId}?from=${startDateStr}&to=${dateStr}&limit=1000`,
+				method: 'GET',
+				useProxy
 			});
 
 			if (tempoRes.ok) {
@@ -136,21 +216,18 @@ export async function fetchParentsFromJiraY(
 							const jql = `id in (${chunk.join(',')})`;
 
 							try {
-								const searchRes = await fetch('/api/jira/proxy', {
+								const searchRes = await jiraFetch({
+									baseUrl,
+									email,
+									apiToken,
+									endpoint: '/rest/api/3/search/jql',
 									method: 'POST',
-									headers: { 'Content-Type': 'application/json' },
-									body: JSON.stringify({
-										baseUrl,
-										email,
-										apiToken,
-										endpoint: '/rest/api/3/search/jql',
-										method: 'POST',
-										body: {
-											jql,
-											fields: ['key', 'summary', 'issuetype', 'status'],
-											maxResults: 100
-										}
-									})
+									body: {
+										jql,
+										fields: ['key', 'summary', 'issuetype', 'status'],
+										maxResults: 100
+									},
+									useProxy
 								});
 
 								if (searchRes.ok) {
@@ -222,14 +299,15 @@ export async function fetchWorklogsFromJiraX(
 	baseUrl: string,
 	email: string,
 	apiToken: string,
-	date: Date
+	date: Date,
+	useProxy: boolean = true
 ): Promise<any[]> {
 	if (typeof window === 'undefined' || !baseUrl.startsWith('http')) return [];
 	try {
 		const dateStr = getLocalDateString(date);
 
 		// 1. Get current user (cached)
-		const myselfData = await getMyself(baseUrl, email, apiToken);
+		const myselfData = await getMyself(baseUrl, email, apiToken, useProxy);
 		let currentUserAccountId: string | undefined;
 		let currentUserName: string | undefined;
 
@@ -241,17 +319,14 @@ export async function fetchWorklogsFromJiraX(
 		// 2. Search for issues where the user has logged time today
 		// We still need to search issues first. JQL is efficient here.
 		const jql = `worklogDate = '${dateStr}' AND worklogAuthor = currentUser()`;
-		const response = await fetch('/api/jira/proxy', {
+		const response = await jiraFetch({
+			baseUrl,
+			email,
+			apiToken,
+			endpoint: '/rest/api/3/search/jql',
 			method: 'POST',
-			headers: { 'Content-Type': 'application/json' },
-			body: JSON.stringify({
-				baseUrl,
-				email,
-				apiToken,
-				endpoint: '/rest/api/3/search/jql',
-				method: 'POST',
-				body: { jql, fields: ['key', 'summary', 'labels', 'issuetype'], maxResults: 100 }
-			})
+			body: { jql, fields: ['key', 'summary', 'labels', 'issuetype'], maxResults: 100 },
+			useProxy
 		});
 		const data = await response.json();
 		const results: any[] = [];
@@ -261,16 +336,13 @@ export async function fetchWorklogsFromJiraX(
 		const worklogPromises = issues.map(async (issue: any) => {
 			Cache.setIssue(issue.id, issue); // Proactively cache issue details from search result
 
-			const wlRes = await fetch('/api/jira/proxy', {
-				method: 'POST',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({
-					baseUrl,
-					email,
-					apiToken,
-					endpoint: `/rest/api/3/issue/${issue.key}/worklog`,
-					method: 'GET'
-				})
+			const wlRes = await jiraFetch({
+				baseUrl,
+				email,
+				apiToken,
+				endpoint: `/rest/api/3/issue/${issue.key}/worklog`,
+				method: 'GET',
+				useProxy
 			});
 			if (!wlRes.ok) return [];
 
@@ -336,7 +408,8 @@ export async function searchJiraIssues(
 	baseUrl: string,
 	email: string,
 	apiToken: string,
-	query: string
+	query: string,
+	useProxy: boolean = true
 ): Promise<any[]> {
 	if (typeof window === 'undefined' || !baseUrl.startsWith('http')) return [];
 	if (!query || query.length < 2) return [];
@@ -375,21 +448,18 @@ export async function searchJiraIssues(
 			}
 		}
 
-		const response = await fetch('/api/jira/proxy', {
+		const response = await jiraFetch({
+			baseUrl,
+			email,
+			apiToken,
+			endpoint: '/rest/api/3/search/jql',
 			method: 'POST',
-			headers: { 'Content-Type': 'application/json' },
-			body: JSON.stringify({
-				baseUrl,
-				email,
-				apiToken,
-				endpoint: '/rest/api/3/search/jql',
-				method: 'POST',
-				body: {
-					jql,
-					fields: ['key', 'summary', 'issuetype', 'status'],
-					maxResults: 100
-				}
-			})
+			body: {
+				jql,
+				fields: ['key', 'summary', 'issuetype', 'status'],
+				maxResults: 100
+			},
+			useProxy
 		});
 
 		if (response.ok) {
@@ -412,16 +482,13 @@ export async function searchJiraIssues(
 		}
 
 		// 2. Fallback to Issue Picker
-		const pickerRes = await fetch('/api/jira/proxy', {
-			method: 'POST',
-			headers: { 'Content-Type': 'application/json' },
-			body: JSON.stringify({
-				baseUrl,
-				email,
-				apiToken,
-				endpoint: `/rest/api/3/issue/picker?query=${encodeURIComponent(cleanQuery)}`,
-				method: 'GET'
-			})
+		const pickerRes = await jiraFetch({
+			baseUrl,
+			email,
+			apiToken,
+			endpoint: `/rest/api/3/issue/picker?query=${encodeURIComponent(cleanQuery)}`,
+			method: 'GET',
+			useProxy
 		});
 
 		if (pickerRes.ok) {
@@ -463,7 +530,8 @@ export async function migrateWorklogsToJiraY(
 		currentParent: string;
 		currentWorklog: string;
 		phase: string;
-	}) => void
+	}) => void,
+	useProxy: boolean = true
 ): Promise<{ success: boolean; migratedCount: number }> {
 	let migratedCount = 0;
 	const targetDateStr = getLocalDateString(targetDate);
@@ -485,7 +553,7 @@ export async function migrateWorklogsToJiraY(
 
 		let authorAccountId = '';
 		if (tempoToken) {
-			const myselfData = await getMyself(baseUrl, email, apiToken);
+			const myselfData = await getMyself(baseUrl, email, apiToken, useProxy);
 			if (myselfData) {
 				authorAccountId = myselfData.accountId;
 			}
@@ -504,16 +572,14 @@ export async function migrateWorklogsToJiraY(
 				phase: 'Pobieranie atrybutów Tempo...'
 			});
 
-			const attrsRes = await fetch('/api/jira/proxy', {
-				method: 'POST',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({
-					baseUrl,
-					apiToken: tempoToken,
-					isTempo: true,
-					endpoint: '/4/work-attributes',
-					method: 'GET'
-				})
+			const attrsRes = await jiraFetch({
+				baseUrl,
+				apiToken: tempoToken,
+				email, // Though Tempo might not need it, we pass it for consistency
+				isTempo: true,
+				endpoint: '/4/work-attributes',
+				method: 'GET',
+				useProxy
 			});
 
 			if (attrsRes.ok) {
@@ -543,16 +609,13 @@ export async function migrateWorklogsToJiraY(
 				// Try to find issue by key if ID fails
 				if (!issueData) {
 					try {
-						const issueRes = await fetch('/api/jira/proxy', {
-							method: 'POST',
-							headers: { 'Content-Type': 'application/json' },
-							body: JSON.stringify({
-								baseUrl,
-								email,
-								apiToken,
-								endpoint: `/rest/api/2/issue/${migration.parentKey}`,
-								method: 'GET'
-							})
+						const issueRes = await jiraFetch({
+							baseUrl,
+							email,
+							apiToken,
+							endpoint: `/rest/api/2/issue/${migration.parentKey}`,
+							method: 'GET',
+							useProxy
 						});
 						if (issueRes.ok) {
 							issueData = await issueRes.json();
@@ -628,44 +691,39 @@ export async function migrateWorklogsToJiraY(
 
 				if (tempoToken && authorAccountId && issueIdForTempo) {
 					// TEMPO MIGRATION - Use targetDate from calendar
-					response = await fetch('/api/jira/proxy', {
+					response = await jiraFetch({
+						baseUrl,
+						apiToken: tempoToken,
+						email,
+						isTempo: true,
+						endpoint: '/4/worklogs',
 						method: 'POST',
-						headers: { 'Content-Type': 'application/json' },
-						body: JSON.stringify({
-							baseUrl,
-							apiToken: tempoToken,
-							isTempo: true,
-							endpoint: '/4/worklogs',
-							method: 'POST',
-							body: {
-								issueId: issueIdForTempo,
-								timeSpentSeconds: worklog.timeSpentSeconds,
-								startDate: targetDateStr, // Use date from calendar
-								startTime: '09:00:00',
-								description: `[${worklog.issueKey}] ${worklog.comment || worklog.issueSummary}`,
-								authorAccountId: authorAccountId,
-								attributes:
-									attributesForThisMigration.length > 0 ? attributesForThisMigration : undefined
-							}
-						})
+						body: {
+							issueId: issueIdForTempo,
+							timeSpentSeconds: worklog.timeSpentSeconds,
+							startDate: targetDateStr, // Use date from calendar
+							startTime: '09:00:00',
+							description: `[${worklog.issueKey}] ${worklog.comment || worklog.issueSummary}`,
+							authorAccountId: authorAccountId,
+							attributes:
+								attributesForThisMigration.length > 0 ? attributesForThisMigration : undefined
+						},
+						useProxy
 					});
 				} else {
 					// NATIVE JIRA - Use targetDate from calendar
-					response = await fetch('/api/jira/proxy', {
+					response = await jiraFetch({
+						baseUrl,
+						email,
+						apiToken,
+						endpoint: `/rest/api/2/issue/${migration.parentKey}/worklog?adjustEstimate=leave`,
 						method: 'POST',
-						headers: { 'Content-Type': 'application/json' },
-						body: JSON.stringify({
-							baseUrl,
-							email,
-							apiToken,
-							endpoint: `/rest/api/2/issue/${migration.parentKey}/worklog?adjustEstimate=leave`,
-							method: 'POST',
-							body: {
-								timeSpentSeconds: worklog.timeSpentSeconds,
-								started: `${targetDateStr}T09:00:00.000+0000`, // Use date from calendar
-								comment: `[${worklog.issueKey}] ${worklog.comment || worklog.issueSummary}`
-							}
-						})
+						body: {
+							timeSpentSeconds: worklog.timeSpentSeconds,
+							started: `${targetDateStr}T09:00:00.000+0000`, // Use date from calendar
+							comment: `[${worklog.issueKey}] ${worklog.comment || worklog.issueSummary}`
+						},
+						useProxy
 					});
 				}
 
@@ -698,33 +756,98 @@ export async function migrateWorklogsToJiraY(
 export async function testConnectionToJira(
 	baseUrl: string,
 	email: string,
-	apiToken: string
+	apiToken: string,
+	useProxy: boolean = true
 ): Promise<ConnectionTestResult> {
+	if (useProxy === false) {
+		try {
+			// Direct browser test
+			const res = await jiraFetch({
+				baseUrl,
+				email,
+				apiToken,
+				endpoint: '/rest/api/2/myself',
+				method: 'GET',
+				useProxy: false
+			});
+			if (res.ok) {
+				const data = await res.json();
+				return {
+					success: true,
+					message: 'Połączenie bezpośrednie nawiązane!',
+					userEmail: data.emailAddress || data.name,
+					serverInfo: `Zalogowano jako: ${data.displayName || data.name}`
+				};
+			} else {
+				return {
+					success: false,
+					message: `Błąd połączenia bezpośredniego (${res.status})`
+				};
+			}
+		} catch (err: any) {
+			return {
+				success: false,
+				message: `Błąd CORS lub sieciowy: ${err.message}. Upewnij się, że Jira pozwala na połączenia z tego adresu.`
+			};
+		}
+	}
+
 	try {
 		const r = await fetch('/api/test-connection', {
 			method: 'POST',
 			headers: { 'Content-Type': 'application/json' },
-			body: JSON.stringify({ baseUrl, email, apiToken })
+			body: JSON.stringify({ baseUrl, email, apiToken, useProxy })
 		});
 		return await r.json();
 	} catch {
-		return { success: false, message: 'Błąd połączenia' };
+		return { success: false, message: 'Błąd połączenia (serwer proxy)' };
 	}
 }
 
 export async function testConnectionToTempo(
 	baseUrl: string,
-	tempoToken: string
+	tempoToken: string,
+	useProxy: boolean = true
 ): Promise<ConnectionTestResult> {
+	if (useProxy === false) {
+		try {
+			// Direct browser test
+			const res = await jiraFetch({
+				baseUrl,
+				email: '',
+				apiToken: tempoToken,
+				endpoint: '/4/worklogs?limit=1',
+				isTempo: true,
+				useProxy: false
+			});
+			if (res.ok) {
+				return {
+					success: true,
+					message: 'Połączenie bezpośrednie z Tempo nawiązane!'
+				};
+			} else {
+				return {
+					success: false,
+					message: `Błąd Tempo (${res.status})`
+				};
+			}
+		} catch (err: any) {
+			return {
+				success: false,
+				message: `Błąd CORS lub sieciowy Tempo: ${err.message}`
+			};
+		}
+	}
+
 	try {
 		const r = await fetch('/api/test-connection', {
 			method: 'POST',
 			headers: { 'Content-Type': 'application/json' },
-			body: JSON.stringify({ baseUrl, apiToken: tempoToken, type: 'tempo' })
+			body: JSON.stringify({ baseUrl, apiToken: tempoToken, type: 'tempo', useProxy })
 		});
 		return await r.json();
 	} catch {
-		return { success: false, message: 'Błąd połączenia z Tempo' };
+		return { success: false, message: 'Błąd połączenia z Tempo (serwer proxy)' };
 	}
 }
 export async function deleteWorklogInJiraY(
@@ -733,7 +856,8 @@ export async function deleteWorklogInJiraY(
 	apiToken: string,
 	worklogId: string,
 	issueKeyOrId?: string, // Required for native Jira
-	tempoToken?: string
+	tempoToken?: string,
+	useProxy: boolean = true
 ): Promise<boolean> {
 	try {
 		const isTempo = !!tempoToken;
@@ -741,17 +865,14 @@ export async function deleteWorklogInJiraY(
 			? `/4/worklogs/${worklogId}`
 			: `/rest/api/2/issue/${issueKeyOrId}/worklog/${worklogId}`;
 
-		const response = await fetch('/api/jira/proxy', {
-			method: 'POST',
-			headers: { 'Content-Type': 'application/json' },
-			body: JSON.stringify({
-				baseUrl,
-				email,
-				apiToken: isTempo ? tempoToken : apiToken,
-				isTempo,
-				endpoint,
-				method: 'DELETE'
-			})
+		const response = await jiraFetch({
+			baseUrl,
+			email,
+			apiToken: isTempo ? tempoToken : apiToken,
+			isTempo,
+			endpoint,
+			method: 'DELETE',
+			useProxy
 		});
 
 		if (!response.ok) {
@@ -772,29 +893,28 @@ export async function checkTempoPeriodStatus(
 	email: string,
 	apiToken: string,
 	date: Date,
-	tempoToken: string
+	tempoToken: string,
+	useProxy: boolean = true
 ): Promise<{ isLocked: boolean; status: string }> {
 	if (!tempoToken) return { isLocked: false, status: 'OPEN' };
 
 	try {
 		// dateStr variable removed as it was unused
-		const myselfData = await getMyself(baseUrl, email, apiToken);
+		const myselfData = await getMyself(baseUrl, email, apiToken, useProxy);
 		if (!myselfData) return { isLocked: false, status: 'UNKNOWN' };
 
 		const accountId = myselfData.accountId;
 
 		// Check approvals for the specific date
-		const response = await fetch('/api/jira/proxy', {
-			method: 'POST',
-			headers: { 'Content-Type': 'application/json' },
-			body: JSON.stringify({
-				baseUrl,
-				apiToken: tempoToken,
-				isTempo: true,
-				// Fetch approvals specifically for the month of the selected date
-				endpoint: `/4/timesheet-approvals/user/${accountId}?from=${getLocalDateString(new Date(date.getFullYear(), date.getMonth(), 1))}&to=${getLocalDateString(new Date(date.getFullYear(), date.getMonth() + 1, 0))}`,
-				method: 'GET'
-			})
+		const response = await jiraFetch({
+			baseUrl,
+			apiToken: tempoToken,
+			email,
+			isTempo: true,
+			// Fetch approvals specifically for the month of the selected date
+			endpoint: `/4/timesheet-approvals/user/${accountId}?from=${getLocalDateString(new Date(date.getFullYear(), date.getMonth(), 1))}&to=${getLocalDateString(new Date(date.getFullYear(), date.getMonth() + 1, 0))}`,
+			method: 'GET',
+			useProxy
 		});
 
 		if (response.ok) {

@@ -71,9 +71,15 @@
 		// Deep clone for editing
 		const clone = JSON.parse(JSON.stringify(project));
 
-		// Ensure tempoToken exists to avoid binding errors (string | undefined)
-		if (clone.jiraX && !clone.jiraX.tempoToken) clone.jiraX.tempoToken = '';
-		if (clone.jiraY && !clone.jiraY.tempoToken) clone.jiraY.tempoToken = '';
+		// Ensure properties exist to avoid binding errors
+		if (clone.jiraX) {
+			if (!clone.jiraX.tempoToken) clone.jiraX.tempoToken = '';
+			if (clone.jiraX.useProxy === undefined) clone.jiraX.useProxy = true;
+		}
+		if (clone.jiraY) {
+			if (!clone.jiraY.tempoToken) clone.jiraY.tempoToken = '';
+			if (clone.jiraY.useProxy === undefined) clone.jiraY.useProxy = true;
+		}
 		if (!clone.rules) clone.rules = [];
 
 		editingProject = clone;
@@ -480,6 +486,26 @@
 										onInfoClick={() => (showApiTokenHelp = true)}
 									/>
 
+									<div class="space-y-2 py-1">
+										<div class="flex items-center gap-2">
+											<input
+												id="jiraX-proxy"
+												type="checkbox"
+												bind:checked={editingProject.jiraX.useProxy}
+												class="size-4 rounded border-slate-700 bg-slate-900 text-violet-500 focus:ring-violet-500"
+											/>
+											<label for="jiraX-proxy" class="text-sm font-medium text-slate-300">
+												Używaj serwera proxy (Vercel)
+											</label>
+										</div>
+										{#if !editingProject.jiraX.useProxy}
+											<p class="text-[10px] leading-tight text-amber-500/80 italic">
+												Wyłączenie proxy pozwala na połączenie z lokalną/VPN Jirą bezpośrednio z
+												Twojej przeglądarki, ale może wymagać konfiguracji CORS w Jira.
+											</p>
+										{/if}
+									</div>
+
 									<!-- Test Connection Button -->
 									<div class="border-t border-slate-700/50 pt-4">
 										<Button
@@ -579,6 +605,25 @@
 										required
 										error={!editingProject.jiraY.tempoToken ? 'To pole jest wymagane' : ''}
 									/>
+
+									<div class="space-y-2 py-1">
+										<div class="flex items-center gap-2">
+											<input
+												id="jiraY-proxy"
+												type="checkbox"
+												bind:checked={editingProject.jiraY.useProxy}
+												class="size-4 rounded border-slate-700 bg-slate-900 text-violet-500 focus:ring-violet-500"
+											/>
+											<label for="jiraY-proxy" class="text-sm font-medium text-slate-300">
+												Używaj serwera proxy (Vercel)
+											</label>
+										</div>
+										{#if !editingProject.jiraY.useProxy}
+											<p class="text-[10px] leading-tight text-amber-500/80 italic">
+												Wyłączenie proxy zalecane tylko jeśli cel mierzysz w lokalną instancję Jira.
+											</p>
+										{/if}
+									</div>
 
 									<!-- Test Connection Buttons -->
 									<div class="space-y-3 border-t border-slate-700/50 pt-4">
