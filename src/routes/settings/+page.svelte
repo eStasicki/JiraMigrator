@@ -121,7 +121,8 @@
 			connectionTestResultX = await testConnectionToJira(
 				editingProject.jiraX.baseUrl,
 				editingProject.jiraX.email,
-				editingProject.jiraX.apiToken
+				editingProject.jiraX.apiToken,
+				editingProject.jiraX.useProxy
 			);
 		} finally {
 			testingConnectionX = false;
@@ -138,7 +139,8 @@
 			connectionTestResultY = await testConnectionToJira(
 				editingProject.jiraY.baseUrl,
 				editingProject.jiraY.email,
-				editingProject.jiraY.apiToken
+				editingProject.jiraY.apiToken,
+				editingProject.jiraY.useProxy
 			);
 		} finally {
 			testingConnectionY = false;
@@ -155,7 +157,8 @@
 			// Używamy dedykowanego tempoToken dla testu Tempo
 			connectionTestResultTempoY = await testConnectionToTempo(
 				editingProject.jiraY.baseUrl,
-				editingProject.jiraY.tempoToken || ''
+				editingProject.jiraY.tempoToken || '',
+				editingProject.jiraY.useProxy
 			);
 		} finally {
 			testingTempoY = false;
