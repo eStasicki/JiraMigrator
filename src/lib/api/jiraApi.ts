@@ -37,6 +37,38 @@ async function jiraFetch(config: {
 		authType
 	} = config;
 
+	// TAURI DESKTOP: Use Rust proxy command
+	if (typeof window !== 'undefined' && (window as any).__TAURI_INTERNALS__) {
+		try {
+			const { invoke } = await import('@tauri-apps/api/core');
+			const result = await invoke('jira_proxy', {
+				baseUrl,
+				email,
+				apiToken,
+				endpoint,
+				method,
+				body,
+				isTempo,
+				authType
+			});
+
+			return {
+				ok: true,
+				status: result === null ? 204 : 200,
+				json: async () => result,
+				text: async () => JSON.stringify(result)
+			} as Response;
+		} catch (error: any) {
+			console.error('[JiraApi] Tauri Proxy Error:', error);
+			return {
+				ok: false,
+				status: 500,
+				json: async () => ({ error: String(error) }),
+				text: async () => String(error)
+			} as Response;
+		}
+	}
+
 	// DEFAULT: Use proxy unless explicitly disabled
 	if (useProxy !== false) {
 		return fetch('/api/jira/proxy', {
@@ -840,6 +872,38 @@ export async function testConnectionToJira(
 		}
 	}
 
+	// TAURI DESKTOP: Use Rust proxy command for testing
+	if (typeof window !== 'undefined' && (window as any).__TAURI_INTERNALS__) {
+		try {
+			const { invoke } = await import('@tauri-apps/api/core');
+			const result = await invoke('jira_proxy', {
+				baseUrl,
+				email,
+				apiToken,
+				endpoint: '/rest/api/3/myself', // Use v3 for testing if possible
+				method: 'GET',
+				useProxy: true,
+				authType
+			});
+
+			if (result) {
+				const data = result as any;
+				return {
+					success: true,
+					message: 'Połączenie z Jira nawiązane!',
+					userEmail: data.emailAddress || data.name,
+					serverInfo: `Zalogowano jako: ${data.displayName || data.name}`
+				};
+			}
+		} catch (error: any) {
+			console.error('[JiraApi] Tauri Connection Test Error:', error);
+			return {
+				success: false,
+				message: `Błąd połączenia: ${String(error)}`
+			};
+		}
+	}
+
 	try {
 		const r = await fetch('/api/test-connection', {
 			method: 'POST',
@@ -885,6 +949,35 @@ export async function testConnectionToTempo(
 			return {
 				success: false,
 				message: `Błąd CORS lub sieciowy Tempo: ${err.message}`
+			};
+		}
+	}
+
+	// TAURI DESKTOP: Use Rust proxy command for testing Tempo
+	if (typeof window !== 'undefined' && (window as any).__TAURI_INTERNALS__) {
+		try {
+			const { invoke } = await import('@tauri-apps/api/core');
+			// Test with worklogs endpoint for Tempo
+			await invoke('jira_proxy', {
+				baseUrl,
+				email: '',
+				apiToken: tempoToken,
+				endpoint: '/4/worklog-types',
+				isTempo: true,
+				method: 'GET',
+				useProxy: true,
+				authType
+			});
+
+			return {
+				success: true,
+				message: 'Połączenie z Tempo nawiązane!'
+			};
+		} catch (error: any) {
+			console.error('[JiraApi] Tauri Tempo Test Error:', error);
+			return {
+				success: false,
+				message: `Błąd Tempo: ${String(error)}`
 			};
 		}
 	}
