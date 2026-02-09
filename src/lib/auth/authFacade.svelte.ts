@@ -94,12 +94,9 @@ function createAuthFacade() {
 		}
 	}
 
-	// Initialize state
-	// Initialize state
-	// Initialize state
-	if (browser) {
-		// Note: We removed the global safety timeout because individual requests now have timeouts.
-
+	if (browser && typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window) {
+		state.isLoading = false;
+	} else if (browser) {
 		supabase.auth
 			.getSession()
 			.then(async ({ data: { session }, error }) => {

@@ -8,27 +8,34 @@
 	import { page } from '$app/stores';
 	import { goto } from '$app/navigation';
 	import { Loader2 } from 'lucide-svelte';
+	import { isTauri } from '$lib/tauri';
 
 	import { untrack } from 'svelte';
 	import type { Snippet } from 'svelte';
 
 	let { children }: { children: Snippet } = $props();
 
-	// Auth Guard
+	let isDesktop = $state(false);
+
 	$effect(() => {
+		isDesktop = isTauri();
+	});
+
+	$effect(() => {
+		if (isDesktop) return;
+
 		if (!authFacade.isLoading) {
 			if (!authFacade.user && $page.url.pathname !== '/login') {
 				goto('/login');
 			}
-			// Optional: Redirect to home if already logged in and trying to access login
 			if (authFacade.user && $page.url.pathname === '/login') {
 				goto('/');
 			}
 		}
 	});
 
-	// Sync settings from cloud when profile loads
 	$effect(() => {
+		if (isDesktop) return;
 		if (
 			authFacade.user &&
 			authFacade.profile?.settings &&
@@ -67,16 +74,16 @@
 </svelte:head>
 
 <div
-	class="min-h-screen bg-linear-to-br from-slate-950 via-slate-900 to-slate-950 {authFacade.user
+	class="min-h-screen bg-linear-to-br from-slate-950 via-slate-900 to-slate-950 {authFacade.user || isDesktop
 		? 'pb-24 md:pb-0'
 		: ''}"
 >
-	{#if authFacade.isLoading}
+	{#if !isDesktop && authFacade.isLoading}
 		<div class="flex h-screen items-center justify-center">
 			<Loader2 class="size-12 animate-spin text-violet-500" />
 		</div>
 	{:else}
-		{#if authFacade.user}
+		{#if authFacade.user || isDesktop}
 			<Navbar />
 		{/if}
 		{@render children()}

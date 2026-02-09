@@ -1,5 +1,6 @@
 import { browser } from '$app/environment';
 import { authFacade } from '$lib/auth/authFacade.svelte';
+import { isTauri } from '$lib/tauri';
 
 export interface JiraConfig {
 	name: string;
@@ -142,9 +143,7 @@ function createSettingsStore() {
 			localStorage.setItem(STORAGE_KEY, JSON.stringify(settings));
 		}
 
-		// Sync with Supabase if logged in
-		if (authFacade.user) {
-			// Send SANITIZED settings (without tokens) to cloud
+		if (!isTauri() && authFacade.user) {
 			const cloudSettings = sanitizeSettingsForCloud(settings);
 			await authFacade.updateProfile({ settings: cloudSettings });
 		}
@@ -228,7 +227,7 @@ function createSettingsStore() {
 		if (browser) {
 			localStorage.removeItem(STORAGE_KEY);
 		}
-		if (authFacade.user) {
+		if (!isTauri() && authFacade.user) {
 			authFacade.updateProfile({ settings: defaultSettings });
 		}
 	}

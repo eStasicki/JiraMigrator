@@ -7,13 +7,21 @@
 		FolderOpen,
 		Plus,
 		LogOut,
-		User
+		User,
+		Monitor
 	} from 'lucide-svelte';
 	import { page } from '$app/stores';
 	import { goto } from '$app/navigation';
 	import { settingsStore } from '$lib/stores/settings.svelte';
 	import { authFacade } from '$lib/auth/authFacade.svelte';
+	import { isTauri } from '$lib/tauri';
 	import { LogIn } from 'lucide-svelte';
+
+	let isDesktop = $state(false);
+
+	$effect(() => {
+		isDesktop = isTauri();
+	});
 
 	const navItems = [
 		{ href: '/', label: 'Migracja', icon: ArrowLeftRight },
@@ -189,7 +197,16 @@
 
 		<!-- Right: User & Actions -->
 		<div class="flex items-center gap-4">
-			{#if authFacade.user}
+			{#if isDesktop}
+				<div class="flex items-center gap-2 pl-4">
+					<div
+						class="flex size-9 items-center justify-center rounded-full bg-slate-800 ring-2 ring-violet-500/30"
+					>
+						<Monitor class="size-4 text-violet-400" />
+					</div>
+					<span class="hidden text-xs font-medium text-slate-400 md:block">Desktop</span>
+				</div>
+			{:else if authFacade.user}
 				<div class="flex items-center gap-3 pl-4">
 					<div class="hidden text-right md:block">
 						<div class="text-xs font-medium text-slate-200">{authFacade.user.email}</div>
