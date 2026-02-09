@@ -37,19 +37,20 @@ async function jiraFetch(config: {
 		authType
 	} = config;
 
-	// TAURI DESKTOP: Use Rust proxy command
 	if (typeof window !== 'undefined' && (window as any).__TAURI_INTERNALS__) {
 		try {
 			const { invoke } = await import('@tauri-apps/api/core');
 			const result = await invoke('jira_proxy', {
-				baseUrl,
-				email,
-				apiToken,
-				endpoint,
-				method,
-				body,
-				isTempo,
-				authType
+				req: {
+					baseUrl,
+					email,
+					apiToken,
+					endpoint,
+					method,
+					body,
+					isTempo,
+					authType
+				}
 			});
 
 			return {
@@ -877,13 +878,14 @@ export async function testConnectionToJira(
 		try {
 			const { invoke } = await import('@tauri-apps/api/core');
 			const result = await invoke('jira_proxy', {
-				baseUrl,
-				email,
-				apiToken,
-				endpoint: '/rest/api/3/myself', // Use v3 for testing if possible
-				method: 'GET',
-				useProxy: true,
-				authType
+				req: {
+					baseUrl,
+					email,
+					apiToken,
+					endpoint: '/rest/api/3/myself',
+					method: 'GET',
+					authType
+				}
 			});
 
 			if (result) {
@@ -959,14 +961,15 @@ export async function testConnectionToTempo(
 			const { invoke } = await import('@tauri-apps/api/core');
 			// Test with worklogs endpoint for Tempo
 			await invoke('jira_proxy', {
-				baseUrl,
-				email: '',
-				apiToken: tempoToken,
-				endpoint: '/4/worklog-types',
-				isTempo: true,
-				method: 'GET',
-				useProxy: true,
-				authType
+				req: {
+					baseUrl,
+					email: '',
+					apiToken: tempoToken,
+					endpoint: '/4/worklog-types',
+					isTempo: true,
+					method: 'GET',
+					authType
+				}
 			});
 
 			return {
