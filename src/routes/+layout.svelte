@@ -2,6 +2,7 @@
 	import './layout.css';
 	import favicon from '$lib/assets/favicon.svg';
 	import Navbar from '$lib/components/Navbar.svelte';
+	import TitleBar from '$lib/components/TitleBar.svelte';
 	import { settingsStore, type AppSettings } from '$lib/stores/settings.svelte';
 	import { authFacade } from '$lib/auth/authFacade.svelte';
 	import { browser } from '$app/environment';
@@ -19,6 +20,17 @@
 
 	$effect(() => {
 		isDesktop = isTauri();
+	});
+
+	// Toggle desktop-mode class on <html> to prevent body-level scrollbar
+	$effect(() => {
+		if (browser) {
+			if (isDesktop) {
+				document.documentElement.classList.add('desktop-mode');
+			} else {
+				document.documentElement.classList.remove('desktop-mode');
+			}
+		}
 	});
 
 	$effect(() => {
@@ -73,19 +85,33 @@
 	/>
 </svelte:head>
 
-<div
-	class="min-h-screen bg-linear-to-br from-slate-950 via-slate-900 to-slate-950 {authFacade.user || isDesktop
-		? 'pb-24 md:pb-0'
-		: ''}"
->
-	{#if !isDesktop && authFacade.isLoading}
-		<div class="flex h-screen items-center justify-center">
-			<Loader2 class="size-12 animate-spin text-violet-500" />
+{#if isDesktop}
+	<TitleBar />
+	<div class="desktop-rounded-window">
+		<div class="desktop-scroll-area">
+			<div
+				class="min-h-screen bg-linear-to-br from-slate-950 via-slate-900 to-slate-950 pb-24 md:pb-0"
+			>
+				<Navbar />
+				{@render children()}
+			</div>
 		</div>
-	{:else}
-		{#if authFacade.user || isDesktop}
-			<Navbar />
+	</div>
+{:else}
+	<div
+		class="min-h-screen bg-linear-to-br from-slate-950 via-slate-900 to-slate-950 {authFacade.user
+			? 'pb-24 md:pb-0'
+			: ''}"
+	>
+		{#if authFacade.isLoading}
+			<div class="flex h-screen items-center justify-center">
+				<Loader2 class="size-12 animate-spin text-violet-500" />
+			</div>
+		{:else}
+			{#if authFacade.user}
+				<Navbar />
+			{/if}
+			{@render children()}
 		{/if}
-		{@render children()}
-	{/if}
-</div>
+	</div>
+{/if}

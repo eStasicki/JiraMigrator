@@ -105,6 +105,7 @@ async fn jira_proxy(req: ProxyRequest) -> Result<serde_json::Value, String> {
 pub fn run() {
   tauri::Builder::default()
     .plugin(tauri_plugin_log::Builder::default().build())
+    .plugin(tauri_plugin_os::init())
     .invoke_handler(tauri::generate_handler![jira_proxy])
     .run(tauri::generate_context!())
     .expect("error while running tauri application");

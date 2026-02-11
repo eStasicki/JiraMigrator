@@ -16,6 +16,37 @@ textarea {
 	-moz-osx-font-smoothing: grayscale;
 }
 
+/* Transparent background for Tauri desktop rounded corners */
+html,
+body {
+	background: transparent;
+}
+
+/* Prevent body scroll in desktop mode — scroll happens inside the rounded container */
+html.desktop-mode,
+html.desktop-mode body {
+	overflow: hidden;
+	height: 100vh;
+	width: 100vw;
+}
+
+/* Rounded window outer shell — clips everything including scrollbar */
+.desktop-rounded-window {
+	border-radius: 30px;
+	overflow: hidden;
+	box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.06);
+	height: 100vh;
+	width: 100vw;
+	position: relative;
+}
+
+/* Inner scrollable area — scrollbar stays inside rounded corners */
+.desktop-scroll-area {
+	height: 100%;
+	overflow-y: auto;
+	overflow-x: hidden;
+}
+
 /* Global cursor pointers for interactive elements */
 button,
 a,

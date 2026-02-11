@@ -52,10 +52,11 @@
 <svelte:document onclick={handleClickOutside} />
 
 <!-- Spacer to prevent content overlap since header is fixed -->
-<div class="h-20"></div>
+<div class={isDesktop ? 'h-[calc(5rem+38px)]' : 'h-20'}></div>
 
 <nav
-	class="fixed top-0 right-0 left-0 z-50 border-b border-white/5 bg-slate-950/80 backdrop-blur-xl transition-all duration-300"
+	class="fixed right-0 left-0 z-50 border-b border-white/5 bg-slate-950/80 backdrop-blur-xl transition-all duration-300"
+	style="top: {isDesktop ? '38px' : '0'}"
 >
 	<div class="app-container flex h-16 items-center justify-between px-0">
 		<!-- Left: Brand & Context -->
@@ -178,11 +179,13 @@
 					<a
 						href={item.href}
 						class="relative flex items-center gap-2 rounded-full px-5 py-1.5 text-sm font-medium transition-all duration-300
-                            {$page.url.pathname === item.href
+                            {(
+							item.href === '/' ? $page.route.id === '/' : $page.route.id?.startsWith(item.href)
+						)
 							? 'text-white shadow-sm'
 							: 'text-slate-400 hover:text-white'}"
 					>
-						{#if $page.url.pathname === item.href}
+						{#if item.href === '/' ? $page.route.id === '/' : $page.route.id?.startsWith(item.href)}
 							<div
 								class="absolute inset-0 -z-10 rounded-full bg-slate-700/80 shadow-inner"
 								style="view-transition-name: nav-pill;"
@@ -256,7 +259,11 @@
 			<a
 				href={item.href}
 				class="flex flex-col items-center gap-1 rounded-lg p-2 text-xs font-medium
-                    {$page.url.pathname === item.href ? 'text-violet-400' : 'text-slate-500'}"
+                    {(
+					item.href === '/' ? $page.route.id === '/' : $page.route.id?.startsWith(item.href)
+				)
+					? 'text-violet-400'
+					: 'text-slate-500'}"
 			>
 				<item.icon class="size-5" />
 				{item.label}
